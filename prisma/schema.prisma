@@ -11,4 +11,30 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "OjuotimixSomkene"
+  date        DateTime
+  venue       String
+  plannerId   String
+  guests      Guest[]
+  createdAt   DateTime @default(now())
+}
+
+model Guest {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String   @unique // The "Nigerian Currency" for ID
+  tier         String   @default("Regular") // VIP, Family, Friend
+  mealChoice   String?
+  plusOnes     Int      @default(0)
+  qrCode       String   @unique
+  isCheckedIn  Boolean  @default(false)
+  checkInTime  DateTime?
+  tribute      String?
+  eventId      String
+  event        Event    @relation(fields: [eventId], references: [id])
 }
