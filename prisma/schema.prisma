@@ -1,12 +1,9 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// EventFlow — Prisma Schema
+// Stack: PostgreSQL · NextAuth (Google OAuth) · Prisma ORM
+// Generated for: Production-ready EventFlow app
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -14,27 +11,406 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Event {
-  id          String   @id @default(cuid())
-  name        String   // e.g., "OjuotimixSomkene"
-  date        DateTime
-  venue       String
-  plannerId   String
-  guests      Guest[]
-  createdAt   DateTime @default(now())
+// ─────────────────────────────────────────────
+// AUTH — NextAuth.js required models
+// ─────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
 }
 
-model Guest {
+model Session {
   id           String   @id @default(cuid())
-  name         String
-  phone        String   @unique // The "Nigerian Currency" for ID
-  tier         String   @default("Regular") // VIP, Family, Friend
-  mealChoice   String?
-  plusOnes     Int      @default(0)
-  qrCode       String   @unique
-  isCheckedIn  Boolean  @default(false)
-  checkInTime  DateTime?
-  tribute      String?
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────
+// USER (Planner)
+// ─────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  phone         String?
+
+  // Business profile
+  businessName  String?
+  businessLogo  String?   // URL to uploaded logo
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  events        Event[]
+}
+
+// ─────────────────────────────────────────────
+// EVENT
+// ─────────────────────────────────────────────
+
+model Event {
+  id            String      @id @default(cuid())
+  plannerId     String
+
+  // Core details
+  name          String                        // e.g. "OjuotimixSomkene"
+  slug          String      @unique           // URL-safe identifier for RSVP link
+  description   String?     @db.Text
+  eventType     EventType   @default(WEDDING) // Wedding, Birthday, Corporate, etc.
+  coverImage    String?                        // URL
+
+  // Venue
+  venueName     String?
+  venueAddress  String?
+  venueCapacity Int?
+
+  // Date & Time
+  eventDate     DateTime
+  startTime     String?     // e.g. "2:00 PM"
+  endTime       String?     // e.g. "10:00 PM"
+
+  // Settings
+  status        EventStatus @default(DRAFT)
+  rsvpDeadline  DateTime?
+  isPublic      Boolean     @default(false)
+
+  // White-label / branding
+  brandColor    String?     @default("#C9A84C") // Gold default
+  brandLogo     String?
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations
+  planner       User        @relation(fields: [plannerId], references: [id], onDelete: Cascade)
+  guestTiers    GuestTier[]
+  menuItems     MenuItem[]
+  guests        Guest[]
+  vendors       Vendor[]
+  tributes      Tribute[]   // Guest messages to host
+  giftRecords   GiftRecord[]
+  ushers        Usher[]
+
+  @@index([plannerId])
+  @@index([slug])
+}
+
+enum EventType {
+  WEDDING
+  BIRTHDAY
+  CORPORATE
+  BURIAL
+  ANNIVERSARY
+  OTHER
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────
+// GUEST TIERS
+// (Family, Friends, VIP, Corporate, etc.)
+// ─────────────────────────────────────────────
+
+model GuestTier {
+  id          String   @id @default(cuid())
+  eventId     String
+  name        String   // e.g. "VIP", "Family", "Corporate"
+  color       String?  // For visual distinction on dashboard
+  description String?
+  maxGuests   Int?     // Optional cap per tier
+  tablePrefix String?  // e.g. "VIP-" → tables VIP-1, VIP-2...
+
+  createdAt   DateTime @default(now())
+
+  // Relations
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  guests      Guest[]
+
+  @@index([eventId])
+}
+
+// ─────────────────────────────────────────────
+// MENU ITEMS
+// ─────────────────────────────────────────────
+
+model MenuItem {
+  id          String       @id @default(cuid())
+  eventId     String
+  category    MenuCategory
+  name        String       // e.g. "Jollof & Grilled Chicken"
+  description String?
+  isAvailable Boolean      @default(true)
+  sortOrder   Int          @default(0)
+
+  createdAt   DateTime     @default(now())
+
+  // Relations
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  guestMeals  GuestMeal[]
+
+  @@index([eventId])
+}
+
+enum MenuCategory {
+  FOOD
+  DRINK
+  DESSERT
+  SPECIAL
+}
+
+// ─────────────────────────────────────────────
+// GUEST
+// ─────────────────────────────────────────────
+
+model Guest {
+  id            String        @id @default(cuid())
+  eventId       String
+  tierId        String?
+
+  // Personal details (from RSVP form)
+  firstName     String
+  lastName      String
+  email         String?
+  phone         String?
+
+  // RSVP
+  rsvpStatus    RSVPStatus    @default(PENDING)
+  rsvpAt        DateTime?
+
+  // Seat assignment
+  tableNumber   String?       // e.g. "Table 4", "VIP-2"
+  seatNumber    String?
+
+  // Entry
+  qrCode        String        @unique @default(cuid()) // The unique token encoded in QR
+  qrCodeUrl     String?       // Generated QR image URL
+  checkedIn     Boolean       @default(false)
+  checkedInAt   DateTime?
+  checkedInBy   String?       // Usher ID who scanned
+
+  // Tracking
+  inviteSentAt  DateTime?
+  inviteChannel InviteChannel @default(EMAIL) // WhatsApp, Email, SMS
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  event         Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tier          GuestTier?    @relation(fields: [tierId], references: [id])
+  meals         GuestMeal[]
+  tribute       Tribute?
+  gifts         GiftRecord[]
+
+  @@index([eventId])
+  @@index([qrCode])
+}
+
+enum RSVPStatus {
+  PENDING     // Invited but not responded
+  CONFIRMED   // RSVP'd yes
+  DECLINED    // RSVP'd no
+  WAITLISTED
+  NO_SHOW     // Confirmed but didn't show
+}
+
+enum InviteChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+  MANUAL
+}
+
+// ─────────────────────────────────────────────
+// GUEST MEAL SELECTIONS
+// (Junction table — guest picks food + drink)
+// ─────────────────────────────────────────────
+
+model GuestMeal {
+  id         String   @id @default(cuid())
+  guestId    String
+  menuItemId String
+  quantity   Int      @default(1)
+  notes      String?  // Dietary requirements, etc.
+
+  guest      Guest    @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@unique([guestId, menuItemId])
+}
+
+// ─────────────────────────────────────────────
+// TRIBUTES (Guest messages to host)
+// ─────────────────────────────────────────────
+
+model Tribute {
+  id        String   @id @default(cuid())
+  eventId   String
+  guestId   String   @unique
+  message   String   @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  guest     Guest    @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+// ─────────────────────────────────────────────
+// VENDORS
+// ─────────────────────────────────────────────
+
+model Vendor {
+  id           String       @id @default(cuid())
   eventId      String
-  event        Event    @relation(fields: [eventId], references: [id])
+  name         String
+  contactName  String?
+  email        String?
+  phone        String?
+  role         VendorRole
+  portalToken  String       @unique @default(cuid()) // Unique link for vendor portal
+  notes        String?      @db.Text
+
+  // Portal access
+  portalAccess VendorAccess @default(LIMITED)
+  lastAccessed DateTime?
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  event        Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([portalToken])
+}
+
+enum VendorRole {
+  CATERER
+  SECURITY
+  MEDIA
+  LIVE_BAND
+  DJ
+  MC
+  HYPEMAN
+  AFTER_PARTY
+  DECORATOR
+  PHOTOGRAPHER
+  VIDEOGRAPHER
+  OTHER
+}
+
+enum VendorAccess {
+  LIMITED       // Only their relevant data
+  STANDARD      // General event info + their data
+  FULL          // Full guest list (e.g. media)
+}
+
+// ─────────────────────────────────────────────
+// USHERS
+// (Main usher + floor ushers, transfer system)
+// ─────────────────────────────────────────────
+
+model Usher {
+  id          String      @id @default(cuid())
+  eventId     String
+  name        String
+  phone       String?
+  role        UsherRole   @default(FLOOR)
+  accessToken String      @unique @default(cuid()) // App login token for scanning
+  isActive    Boolean     @default(true)
+
+  createdAt   DateTime    @default(now())
+
+  event       Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+enum UsherRole {
+  MAIN    // The gate scanner who transfers guests
+  FLOOR   // Floor ushers who seat guests
+}
+
+// ─────────────────────────────────────────────
+// GIFT RECORDS
+// (Cash or physical gifts)
+// ─────────────────────────────────────────────
+
+model GiftRecord {
+  id          String     @id @default(cuid())
+  eventId     String
+  guestId     String?    // Null if absentee gifter
+  
+  giftType    GiftType
+  amount      Decimal?   @db.Decimal(10, 2) // For cash gifts
+  currency    String?    @default("NGN")
+  description String?    // For physical gifts
+  
+  // Status
+  status      GiftStatus @default(PENDING)
+  notifiedAt  DateTime?  // When popup was triggered
+  processedAt DateTime?
+
+  // Absentee gifter details (if no guestId)
+  senderName  String?
+  senderPhone String?
+  senderEmail String?
+
+  createdAt   DateTime   @default(now())
+
+  event       Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  guest       Guest?     @relation(fields: [guestId], references: [id])
+
+  @@index([eventId])
+}
+
+enum GiftType {
+  CASH_TRANSFER
+  CASH_PHYSICAL
+  PHYSICAL_ITEM
+}
+
+enum GiftStatus {
+  PENDING
+  NOTIFIED    // Popup triggered to guest
+  RECEIVED    // Usher confirmed physical gift
+  COMPLETED   // Cash transfer confirmed
 }

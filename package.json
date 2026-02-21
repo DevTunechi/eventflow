@@ -1,5 +1,5 @@
 {
-  "name": "eventflow-1",
+  "name": "eventflow",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,10 +9,26 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@prisma/client": "^7.4.0",
+    "@auth/prisma-adapter": "^2.11.1",
+    "@hookform/resolvers": "^5.2.2",
+    "@prisma/client": "^7.4.1",
+    "@radix-ui/react-icons": "^1.3.2",
+    "@types/qrcode": "^1.5.6",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.575.0",
     "next": "16.1.6",
+    "next-auth": "^5.0.0-beta.30",
+    "prisma": "^7.4.1",
+    "qrcode": "^1.5.4",
+    "radix-ui": "^1.4.3",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "react-hook-form": "^7.71.2",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -20,10 +36,11 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
-    "prisma": "^7.4.0",
+    "eslint": "^10.0.1",
+    "eslint-config-next": "latest",
+    "shadcn": "^3.8.5",
     "tailwindcss": "^4",
+    "tw-animate-css": "^1.4.0",
     "typescript": "^5"
   }
 }
