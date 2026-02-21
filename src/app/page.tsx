@@ -416,7 +416,7 @@ export default function LoginPage() {
           </div>
 
           <div className="left-footer">
-            © {new Date().getFullYear()} EventFlow · Built for Nigeria
+            © {new Date().getFullYear()} EventFlow · Powered by Dev Tunechi 
           </div>
         </div>
 
