@@ -80,6 +80,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }),
       })
 
+      // Store a lightweight session cookie so server-side
+      // API routes can identify the current user without
+      // needing the Firebase Admin SDK
+      const sessionData = {
+        uid:   firebaseUser.uid,
+        email: firebaseUser.email,
+        name:  firebaseUser.displayName,
+      }
+      const encoded = btoa(JSON.stringify(sessionData))
+      // 7-day expiry, SameSite=Lax for security
+      document.cookie = `ef-session=${encoded}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`
+
       // Redirect to dashboard after successful sign-in
       router.push("/dashboard")
     } catch (error) {
@@ -89,6 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Sign Out ─────────────────────────────────
   const signOut = async () => {
+    // Clear the session cookie on sign-out
+    document.cookie = "ef-session=; path=/; max-age=0"
     await firebaseSignOut(auth) // clears Firebase session
     router.push("/login")       // send back to login page
   }
