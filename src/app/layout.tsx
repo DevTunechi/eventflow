@@ -23,7 +23,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
+      <body suppressHydrationWarning>
         {/* AuthProvider makes useAuth() available
             to every page and component below */}
         <AuthProvider>
