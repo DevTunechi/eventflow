@@ -623,8 +623,8 @@ export default function DashboardLayout({
             {/* ══ SIDEBAR ══ */}
             <aside className={`ef-sidebar ${collapsed ? "collapsed" : ""} ${drawerOpen ? "drawer-open" : ""}`}>
 
-              {/* Logo */}
-              <div className="ef-sidebar-logo">
+              {/* Logo — clicking navigates to overview/home */}
+              <Link href="/dashboard" className="ef-sidebar-logo" style={{ textDecoration: "none" }}>
                 <Image
                   src="/eflogo.png"
                   alt="EventFlow"
@@ -634,7 +634,7 @@ export default function DashboardLayout({
                 <span className="ef-sidebar-wordmark">
                   Event<span>Flow</span>
                 </span>
-              </div>
+              </Link>
 
               {/* Navigation */}
               <nav className="ef-nav">
