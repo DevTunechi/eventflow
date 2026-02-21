@@ -1,6 +1,22 @@
-// EventFlow — Prisma Schema
-// Stack: PostgreSQL · NextAuth (Google OAuth) · Prisma ORM
-// Generated for: Production-ready EventFlow app
+// ─────────────────────────────────────────────
+// prisma/schema.prisma
+// EventFlow — Complete Data Model
+//
+// Updated to include:
+//   ✓ Open & Closed invite models per event
+//   ✓ OTP phone verification toggle
+//   ✓ Invitation card thumbnail upload
+//   ✓ Pre-assigned seating (VIP/Family/Special)
+//   ✓ Dynamic seating (Friends/General)
+//   ✓ Friend group seat reservation (SeatGroup)
+//   ✓ Table management model
+//   ✓ Tiered menu access (pre-event vs at-event)
+//   ✓ Multi-course menu categories
+//   ✓ Gate crasher tracking
+//   ✓ Vendor privacy (headcounts, no guest names)
+//   ✓ Vendor QR cap override
+//   ✓ Personalised invite tokens (closed model)
+// ─────────────────────────────────────────────
 
 generator client {
   provider = "prisma-client-js"
@@ -13,6 +29,8 @@ datasource db {
 
 // ─────────────────────────────────────────────
 // AUTH — NextAuth.js required models
+// These are required by NextAuth and should
+// not be removed even if switching auth later.
 // ─────────────────────────────────────────────
 
 model Account {
@@ -39,6 +57,7 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
+
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -52,6 +71,8 @@ model VerificationToken {
 
 // ─────────────────────────────────────────────
 // USER (Planner)
+// The person who creates and manages events.
+// Authenticated via Firebase Google OAuth.
 // ─────────────────────────────────────────────
 
 model User {
@@ -59,10 +80,11 @@ model User {
   name          String?
   email         String?   @unique
   emailVerified DateTime?
-  image         String?
+  image         String?   // Google profile photo URL
   phone         String?
 
-  // Business profile
+  // Business branding — shown on RSVP pages
+  // and event microsites
   businessName  String?
   businessLogo  String?   // URL to uploaded logo
 
@@ -77,6 +99,8 @@ model User {
 
 // ─────────────────────────────────────────────
 // EVENT
+// The core entity. Everything else — guests,
+// vendors, tables, ushers — hangs off an event.
 // ─────────────────────────────────────────────
 
 model Event {
@@ -84,11 +108,17 @@ model Event {
   plannerId     String
 
   // Core details
-  name          String                        // e.g. "OjuotimixSomkene"
-  slug          String      @unique           // URL-safe identifier for RSVP link
+  name          String
+  // Slug becomes the public RSVP URL path:
+  // eventflow.app/rsvp/[slug]
+  slug          String      @unique
   description   String?     @db.Text
-  eventType     EventType   @default(WEDDING) // Wedding, Birthday, Corporate, etc.
-  coverImage    String?                        // URL
+  eventType     EventType   @default(WEDDING)
+
+  // Invitation card — soft copy uploaded by
+  // planner, displayed on the RSVP page as
+  // the hero image and sent with QR codes
+  invitationCard String?    // URL to uploaded card image
 
   // Venue
   venueName     String?
@@ -100,13 +130,44 @@ model Event {
   startTime     String?     // e.g. "2:00 PM"
   endTime       String?     // e.g. "10:00 PM"
 
-  // Settings
+  // Status & visibility
   status        EventStatus @default(DRAFT)
   rsvpDeadline  DateTime?
   isPublic      Boolean     @default(false)
 
-  // White-label / branding
-  brandColor    String?     @default("#C9A84C") // Gold default
+  // ── INVITE MODEL ──────────────────────────
+  // OPEN:   Single public RSVP link — anyone
+  //         with the link can register.
+  //         Best for large casual events.
+  //
+  // CLOSED: Personalised link per guest, pre-
+  //         bound to their name & phone number.
+  //         Nobody else can use their link.
+  //         Best for intimate or high-security
+  //         events. Recommended default.
+  inviteModel   InviteModel @default(OPEN)
+
+  // ── OTP VERIFICATION ──────────────────────
+  // When true, guests must verify their phone
+  // number with a 6-digit OTP during RSVP.
+  // Ties each QR code to a confirmed number.
+  // Note: SMS costs apply when enabled —
+  // charged per event based on guest count.
+  requireOtp    Boolean     @default(false)
+
+  // ── SEATING CONFIGURATION ─────────────────
+  // Total tables at the venue
+  totalTables   Int?
+  // Default seats per table (can be overridden
+  // per table in the Table model)
+  seatsPerTable Int?
+  // Minutes after event start before unclaimed
+  // pre-assigned seats are released to general
+  // pool. Null = never release.
+  releaseReservedAfter Int?
+
+  // White-label branding
+  brandColor    String?     @default("#C9A84C")
   brandLogo     String?
 
   createdAt     DateTime    @default(now())
@@ -117,10 +178,12 @@ model Event {
   guestTiers    GuestTier[]
   menuItems     MenuItem[]
   guests        Guest[]
+  tables        Table[]
+  seatGroups    SeatGroup[]
   vendors       Vendor[]
-  tributes      Tribute[]   // Guest messages to host
-  giftRecords   GiftRecord[]
   ushers        Usher[]
+  tributes      Tribute[]
+  giftRecords   GiftRecord[]
 
   @@index([plannerId])
   @@index([slug])
@@ -143,39 +206,170 @@ enum EventStatus {
   CANCELLED
 }
 
+// Controls how guests access the RSVP form
+enum InviteModel {
+  // Single public link — first come first served
+  OPEN
+  // Personalised link per guest — pre-bound
+  // to their name and phone number
+  CLOSED
+}
+
 // ─────────────────────────────────────────────
 // GUEST TIERS
-// (Family, Friends, VIP, Corporate, etc.)
+// Planners create tiers per event, e.g.:
+//   - Family       → PRE_ASSIGNED, PRE_EVENT menu
+//   - VIP          → PRE_ASSIGNED, PRE_EVENT menu
+//   - Special Guest→ PRE_ASSIGNED, PRE_EVENT menu
+//   - Friends      → DYNAMIC, AT_EVENT menu
+//   - Workmates    → DYNAMIC, AT_EVENT menu
+//   - General      → DYNAMIC, AT_EVENT menu
 // ─────────────────────────────────────────────
 
 model GuestTier {
-  id          String   @id @default(cuid())
+  id          String      @id @default(cuid())
   eventId     String
-  name        String   // e.g. "VIP", "Family", "Corporate"
-  color       String?  // For visual distinction on dashboard
+  name        String      // e.g. "VIP", "Family", "Friends"
+  color       String?     // Hex colour for dashboard badges
   description String?
-  maxGuests   Int?     // Optional cap per tier
-  tablePrefix String?  // e.g. "VIP-" → tables VIP-1, VIP-2...
+  maxGuests   Int?        // Optional cap on this tier
 
-  createdAt   DateTime @default(now())
+  // ── SEATING TYPE ──────────────────────────
+  // PRE_ASSIGNED: Table and seat allocated
+  //   before the event. Shown to usher on scan.
+  //   Used for VIPs, Family, Special Guests.
+  //
+  // DYNAMIC: Table assigned at arrival when
+  //   guest scans at the gate. Ushers see the
+  //   assigned table in real time.
+  //   Used for Friends, Workmates, General.
+  seatingType SeatingType @default(DYNAMIC)
+
+  // ── MENU ACCESS ───────────────────────────
+  // PRE_EVENT: Guest selects meals during
+  //   RSVP registration. Food is prepared
+  //   and waiting when they arrive.
+  //   Reserved for premium tiers only.
+  //
+  // AT_EVENT: Guest orders from waitstaff
+  //   on the day. No pre-selection needed.
+  menuAccess  MenuAccess  @default(AT_EVENT)
+
+  // Table prefix for pre-assigned tiers
+  // e.g. "VIP-" → VIP-1, VIP-2
+  tablePrefix String?
+
+  createdAt   DateTime    @default(now())
 
   // Relations
-  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event       Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   guests      Guest[]
+  // Tables reserved for this tier
+  tables      Table[]
+
+  @@index([eventId])
+}
+
+enum SeatingType {
+  PRE_ASSIGNED  // Seat allocated before event
+  DYNAMIC       // Seat assigned at arrival
+}
+
+enum MenuAccess {
+  PRE_EVENT   // Selects meals during RSVP
+  AT_EVENT    // Orders from waitstaff on the day
+}
+
+// ─────────────────────────────────────────────
+// TABLE
+// Tracks each physical table at the venue.
+// Pre-assigned tiers have reserved tables.
+// Dynamic tiers get assigned on arrival.
+// ─────────────────────────────────────────────
+
+model Table {
+  id              String     @id @default(cuid())
+  eventId         String
+  tableNumber     Int        // e.g. 1, 2, 3... shown to ushers
+  label           String?    // e.g. "VIP-1", "Table 12"
+  capacity        Int        @default(10)
+  currentOccupancy Int       @default(0)
+
+  // If reservedForTierId is set, this table is
+  // exclusively for that tier's pre-assigned guests.
+  // If null, it's part of the general dynamic pool.
+  reservedForTierId String?
+
+  // True once all pre-assigned seats are claimed
+  // OR after releaseReservedAfter minutes
+  isReleased      Boolean    @default(false)
+  releasedAt      DateTime?
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  // Relations
+  event           Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  reservedForTier GuestTier? @relation(fields: [reservedForTierId], references: [id])
+  guests          Guest[]
+  seatGroups      SeatGroup[]
 
   @@index([eventId])
 }
 
 // ─────────────────────────────────────────────
+// SEAT GROUP
+// Allows friends to reserve seats together.
+// One guest creates a group and shares the
+// code with friends. Everyone in the group
+// gets placed at the same table.
+//
+// Rules:
+//   - Only available to DYNAMIC seating tiers
+//   - Group cannot exceed table capacity
+//   - Code is shown during RSVP registration
+// ─────────────────────────────────────────────
+
+model SeatGroup {
+  id          String   @id @default(cuid())
+  eventId     String
+  // Short human-readable code shared between
+  // friends e.g. "BLUE-42" or "LAGOS-7"
+  code        String   @unique
+  maxSize     Int      @default(10)
+  // Assigned table once group is placed
+  tableId     String?
+  // The guest who created this group
+  createdById String?
+
+  createdAt   DateTime @default(now())
+
+  // Relations
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  table       Table?   @relation(fields: [tableId], references: [id])
+  members     Guest[]
+
+  @@index([eventId])
+  @@index([code])
+}
+
+// ─────────────────────────────────────────────
 // MENU ITEMS
+// Created by the planner per event.
+// Each item belongs to a course category.
+// Visibility per tier is controlled by the
+// tier's menuAccess field — only PRE_EVENT
+// tiers see the menu during RSVP.
 // ─────────────────────────────────────────────
 
 model MenuItem {
   id          String       @id @default(cuid())
   eventId     String
+  // Course category shown in RSVP flow
+  // in this order: APPETIZER → MAIN → DRINK → DESSERT
   category    MenuCategory
-  name        String       // e.g. "Jollof & Grilled Chicken"
-  description String?
+  name        String       // e.g. "Jollof Rice & Grilled Chicken"
+  description String?      // e.g. "Served with coleslaw and fried plantain"
   isAvailable Boolean      @default(true)
   sortOrder   Int          @default(0)
 
@@ -189,10 +383,11 @@ model MenuItem {
 }
 
 enum MenuCategory {
-  FOOD
-  DRINK
-  DESSERT
-  SPECIAL
+  APPETIZER   // Starter course — e.g. small chops
+  MAIN        // Main dish — e.g. rice, swallow
+  DRINK       // Beverages — alcoholic & non-alcoholic
+  DESSERT     // Dessert — e.g. cake, ice cream
+  SPECIAL     // Chef special or custom item
 }
 
 // ─────────────────────────────────────────────
@@ -203,31 +398,61 @@ model Guest {
   id            String        @id @default(cuid())
   eventId       String
   tierId        String?
+  seatGroupId   String?       // Friend group this guest belongs to
 
-  // Personal details (from RSVP form)
+  // Personal details from RSVP form
   firstName     String
   lastName      String
   email         String?
   phone         String?
 
-  // RSVP
+  // ── INVITE TOKEN (Closed model only) ──────
+  // Each guest gets a unique personalised link:
+  // eventflow.app/rsvp/[slug]?invite=[token]
+  // Once used to register, it cannot be reused.
+  inviteToken     String?     @unique
+  inviteTokenUsed Boolean     @default(false)
+  // When the personalised invite was sent
+  inviteSentAt    DateTime?
+  inviteChannel   InviteChannel @default(EMAIL)
+
+  // ── OTP VERIFICATION ──────────────────────
+  // Stores the OTP sent to guest's phone.
+  // Cleared after successful verification.
+  otpCode         String?
+  otpExpiresAt    DateTime?
+  phoneVerified   Boolean     @default(false)
+
+  // ── RSVP ──────────────────────────────────
   rsvpStatus    RSVPStatus    @default(PENDING)
   rsvpAt        DateTime?
 
-  // Seat assignment
-  tableNumber   String?       // e.g. "Table 4", "VIP-2"
+  // ── SEATING ───────────────────────────────
+  tableId       String?       // FK to Table model
+  tableNumber   String?       // Display value shown to ushers
   seatNumber    String?
+  // When and how seat was assigned
+  seatAssignedAt DateTime?
+  // SYSTEM = auto-assigned on scan
+  // MANUAL = usher overrode assignment
+  seatAssignedBy String?      @default("SYSTEM")
 
-  // Entry
-  qrCode        String        @unique @default(cuid()) // The unique token encoded in QR
-  qrCodeUrl     String?       // Generated QR image URL
+  // ── ENTRY / QR ────────────────────────────
+  // Unique token encoded in the QR code image.
+  // Single-use — marked used on first scan.
+  qrCode        String        @unique @default(cuid())
+  qrCodeUrl     String?       // Generated QR image URL (sent via email/WhatsApp)
   checkedIn     Boolean       @default(false)
   checkedInAt   DateTime?
-  checkedInBy   String?       // Usher ID who scanned
+  checkedInBy   String?       // Usher ID who performed the scan
 
-  // Tracking
-  inviteSentAt  DateTime?
-  inviteChannel InviteChannel @default(EMAIL) // WhatsApp, Email, SMS
+  // ── GATE CRASHER FLAG ─────────────────────
+  // True if QR was scanned more than once
+  // OR if guest checked in but was not on
+  // the confirmed RSVP list
+  isFlagged     Boolean       @default(false)
+  flagReason    String?       // e.g. "QR scanned twice", "Not on guest list"
+  flaggedAt     DateTime?
 
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -235,32 +460,37 @@ model Guest {
   // Relations
   event         Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
   tier          GuestTier?    @relation(fields: [tierId], references: [id])
+  table         Table?        @relation(fields: [tableId], references: [id])
+  seatGroup     SeatGroup?    @relation(fields: [seatGroupId], references: [id])
   meals         GuestMeal[]
   tribute       Tribute?
   gifts         GiftRecord[]
 
   @@index([eventId])
   @@index([qrCode])
+  @@index([inviteToken])
+  @@index([phone])
 }
 
 enum RSVPStatus {
-  PENDING     // Invited but not responded
-  CONFIRMED   // RSVP'd yes
-  DECLINED    // RSVP'd no
-  WAITLISTED
-  NO_SHOW     // Confirmed but didn't show
+  PENDING     // Invited but not yet responded
+  CONFIRMED   // RSVP confirmed
+  DECLINED    // RSVP declined
+  WAITLISTED  // Event full, on waiting list
+  NO_SHOW     // Confirmed but did not attend
 }
 
 enum InviteChannel {
   EMAIL
   WHATSAPP
   SMS
-  MANUAL
+  MANUAL      // Added manually by planner
 }
 
 // ─────────────────────────────────────────────
 // GUEST MEAL SELECTIONS
-// (Junction table — guest picks food + drink)
+// Only guests in PRE_EVENT tiers complete this
+// during RSVP. At-event guests order in person.
 // ─────────────────────────────────────────────
 
 model GuestMeal {
@@ -268,7 +498,7 @@ model GuestMeal {
   guestId    String
   menuItemId String
   quantity   Int      @default(1)
-  notes      String?  // Dietary requirements, etc.
+  notes      String?  // Dietary requirements, allergies, etc.
 
   guest      Guest    @relation(fields: [guestId], references: [id], onDelete: Cascade)
   menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
@@ -277,7 +507,9 @@ model GuestMeal {
 }
 
 // ─────────────────────────────────────────────
-// TRIBUTES (Guest messages to host)
+// TRIBUTES (Guest messages to the host)
+// Shown on a tribute board visible to the
+// planner and optionally the host/celebrant.
 // ─────────────────────────────────────────────
 
 model Tribute {
@@ -296,22 +528,42 @@ model Tribute {
 
 // ─────────────────────────────────────────────
 // VENDORS
+// Added by the planner per event.
+// Each vendor gets a unique portal token —
+// a private link to their relevant dashboard.
+//
+// PRIVACY RULE: Vendors never see guest names
+// or personal details. They only see:
+//   - Total guest headcount
+//   - Meal tallies (caterer only)
+//   - Check-in progress numbers
 // ─────────────────────────────────────────────
 
 model Vendor {
   id           String       @id @default(cuid())
   eventId      String
-  name         String
+  name         String       // Company or service name
   contactName  String?
   email        String?
   phone        String?
   role         VendorRole
-  portalToken  String       @unique @default(cuid()) // Unique link for vendor portal
   notes        String?      @db.Text
 
-  // Portal access
-  portalAccess VendorAccess @default(LIMITED)
+  // Unique token for vendor's private portal URL:
+  // eventflow.app/vendor/[portalToken]
+  portalToken  String       @unique @default(cuid())
   lastAccessed DateTime?
+
+  // ── QR CAPACITY OVERRIDE ──────────────────
+  // When the event hits its guest cap and the
+  // RSVP link closes, a vendor (e.g. security)
+  // can enable walk-in mode from their portal
+  // to manually admit extra guests as walk-ins.
+  // Planner controls whether this is allowed.
+  canOverrideCapacity Boolean @default(false)
+  // True when vendor has activated walk-in mode
+  capacityOverrideActive Boolean @default(false)
+  capacityOverrideAt DateTime?
 
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -337,59 +589,70 @@ enum VendorRole {
   OTHER
 }
 
+// Kept for future use — currently vendors
+// are privacy-restricted to headcounts only.
+// FULL access may be granted to trusted media
+// vendors at the planner's discretion.
 enum VendorAccess {
-  LIMITED       // Only their relevant data
-  STANDARD      // General event info + their data
-  FULL          // Full guest list (e.g. media)
+  LIMITED   // Headcounts + their own data only
+  STANDARD  // General event info + their data
+  FULL      // Full access (restricted, rarely used)
 }
 
 // ─────────────────────────────────────────────
 // USHERS
-// (Main usher + floor ushers, transfer system)
+// Entry management crew on event day.
+// MAIN usher scans QR codes at the gate.
+// FLOOR ushers receive transferred guests
+// and walk them to their assigned table.
 // ─────────────────────────────────────────────
 
 model Usher {
-  id          String      @id @default(cuid())
+  id          String    @id @default(cuid())
   eventId     String
   name        String
   phone       String?
-  role        UsherRole   @default(FLOOR)
-  accessToken String      @unique @default(cuid()) // App login token for scanning
-  isActive    Boolean     @default(true)
+  role        UsherRole @default(FLOOR)
 
-  createdAt   DateTime    @default(now())
+  // Token used to log into the usher scanning
+  // interface — shared by planner on event day
+  accessToken String    @unique @default(cuid())
+  isActive    Boolean   @default(true)
 
-  event       Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId])
 }
 
 enum UsherRole {
-  MAIN    // The gate scanner who transfers guests
-  FLOOR   // Floor ushers who seat guests
+  MAIN   // Gate scanner — scans QR, transfers to floor
+  FLOOR  // Seats guests at their assigned table
 }
 
 // ─────────────────────────────────────────────
 // GIFT RECORDS
-// (Cash or physical gifts)
+// Cash envelopes or physical gifts logged
+// during the event. Can be from attending
+// guests or absentee senders.
 // ─────────────────────────────────────────────
 
 model GiftRecord {
   id          String     @id @default(cuid())
   eventId     String
-  guestId     String?    // Null if absentee gifter
-  
+  guestId     String?    // Null for absentee senders
+
   giftType    GiftType
-  amount      Decimal?   @db.Decimal(10, 2) // For cash gifts
+  amount      Decimal?   @db.Decimal(10, 2)
   currency    String?    @default("NGN")
   description String?    // For physical gifts
-  
-  // Status
+
   status      GiftStatus @default(PENDING)
-  notifiedAt  DateTime?  // When popup was triggered
+  notifiedAt  DateTime?  // When on-screen popup was shown
   processedAt DateTime?
 
-  // Absentee gifter details (if no guestId)
+  // Absentee sender details (when no guestId)
   senderName  String?
   senderPhone String?
   senderEmail String?
@@ -403,14 +666,14 @@ model GiftRecord {
 }
 
 enum GiftType {
-  CASH_TRANSFER
-  CASH_PHYSICAL
-  PHYSICAL_ITEM
+  CASH_TRANSFER  // Bank transfer
+  CASH_PHYSICAL  // Physical cash envelope
+  PHYSICAL_ITEM  // Physical gift item
 }
 
 enum GiftStatus {
   PENDING
-  NOTIFIED    // Popup triggered to guest
-  RECEIVED    // Usher confirmed physical gift
+  NOTIFIED    // On-screen popup shown to host/planner
+  RECEIVED    // Usher confirmed receipt of physical gift
   COMPLETED   // Cash transfer confirmed
 }
