@@ -63,7 +63,8 @@ export default function EventsPage() {
 
   useEffect(() => {
     const token = localStorage.getItem("ef-session") ?? ""
-    const hdrs  = token ? { Authorization: `Bearer ${token}` } : {}
+    const hdrs: Record<string, string> = {};
+    if (token) hdrs["Authorization"] = `Bearer ${token}`;
 
     fetch("/api/events", { headers: hdrs })
       .then(r => r.ok ? r.json() : [])
