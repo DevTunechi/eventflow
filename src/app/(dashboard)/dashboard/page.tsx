@@ -172,10 +172,13 @@ export default function OverviewPage() {
   useEffect(() => {
     const load = async () => {
       try {
+        const token = localStorage.getItem("ef-session") ?? ""
+        const hdrs  = token ? { Authorization: `Bearer ${token}` } : {}
+
         const [sRes, eRes, rRes] = await Promise.all([
-          fetch("/api/overview/stats"),
-          fetch("/api/overview/upcoming"),
-          fetch("/api/overview/recent-rsvps"),
+          fetch("/api/overview/stats",       { headers: hdrs }),
+          fetch("/api/overview/upcoming",    { headers: hdrs }),
+          fetch("/api/overview/recent-rsvps",{ headers: hdrs }),
         ])
         if (sRes.ok) setStats(await sRes.json())
         if (eRes.ok) setUpcomingEvents(await eRes.json())

@@ -628,8 +628,9 @@ export default function DashboardLayout({
                 <Image
                   src="/eflogo.png"
                   alt="EventFlow"
-                  width={26} height={26}
-                  style={{ objectFit: "contain", flexShrink: 0 }}
+                  width={26}
+                  height={26}
+                  style={{ width: 26, height: 26, objectFit: "contain", flexShrink: 0 }}
                 />
                 <span className="ef-sidebar-wordmark">
                   Event<span>Flow</span>
