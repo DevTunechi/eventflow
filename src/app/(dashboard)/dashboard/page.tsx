@@ -173,8 +173,8 @@ export default function OverviewPage() {
     const load = async () => {
       try {
         const token = localStorage.getItem("ef-session") ?? ""
-        const hdrs  = token ? { Authorization: `Bearer ${token}` } : {}
-
+        const hdrs: Record<string, string> = {};
+        if (token) hdrs["Authorization"] = `Bearer ${token}`;
         const [sRes, eRes, rRes] = await Promise.all([
           fetch("/api/overview/stats",       { headers: hdrs }),
           fetch("/api/overview/upcoming",    { headers: hdrs }),
