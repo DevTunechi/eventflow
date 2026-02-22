@@ -41,9 +41,4 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
-.envpublic/1.png
-public/2.png
-public/3.png
-public/4.png
-public/5.png
-public/6.png
+.env
