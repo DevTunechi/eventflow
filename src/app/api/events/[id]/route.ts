@@ -7,17 +7,19 @@ import { prisma } from "@/lib/prisma"
 // ── GET /api/events/[id] ──────────────────────
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth(req)
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const { id } = await params
+
   try {
     const event = await prisma.event.findFirst({
       where: {
-        id:        params.id,
+        id,
         plannerId: session.uid,
       },
       include: {
@@ -47,17 +49,19 @@ export async function GET(
 // ── PATCH /api/events/[id] ────────────────────
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth(req)
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const { id } = await params
+
   try {
     // Confirm ownership
     const existing = await prisma.event.findFirst({
-      where: { id: params.id, plannerId: session.uid },
+      where: { id, plannerId: session.uid },
     })
     if (!existing) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 })
@@ -81,7 +85,7 @@ export async function PATCH(
     }
 
     const updated = await prisma.event.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         ...(title        !== undefined && { title }),
         ...(description  !== undefined && { description }),
@@ -118,22 +122,24 @@ export async function PATCH(
 // ── DELETE /api/events/[id] ───────────────────
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth(req)
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const { id } = await params
+
   try {
     const existing = await prisma.event.findFirst({
-      where: { id: params.id, plannerId: session.uid },
+      where: { id, plannerId: session.uid },
     })
     if (!existing) {
       return NextResponse.json({ error: "Event not found" }, { status: 404 })
     }
 
-    await prisma.event.delete({ where: { id: params.id } })
+    await prisma.event.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("[DELETE /api/events/[id]]", err)
