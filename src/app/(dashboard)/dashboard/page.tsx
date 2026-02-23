@@ -181,9 +181,18 @@ export default function OverviewPage() {
           fetch("/api/overview/upcoming"),
           fetch("/api/overview/recent-rsvps"),
         ])
-        if (sRes.ok) setStats(await sRes.json())
-        if (eRes.ok) setUpcomingEvents(await eRes.json())
-        if (rRes.ok) setRecentRsvps(await rRes.json())
+        if (sRes.ok) {
+          const data = await sRes.json()
+          if (data && typeof data === "object" && !data.error) setStats(data)
+        }
+        if (eRes.ok) {
+          const data = await eRes.json()
+          if (Array.isArray(data)) setUpcomingEvents(data)
+        }
+        if (rRes.ok) {
+          const data = await rRes.json()
+          if (Array.isArray(data)) setRecentRsvps(data)
+      }
       } catch (e) {
         console.error("Overview load error:", e)
       } finally {
