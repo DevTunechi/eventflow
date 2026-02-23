@@ -1,143 +1,121 @@
-// src/app/api/events/[id]/route.ts
+// src/app/api/events/route.ts
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth-server"
 import { prisma } from "@/lib/prisma"
 
-// ── GET /api/events/[id] ──────────────────────
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// ── GET /api/events — list planner's events ───
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { id } = await params
-
   try {
-    const event = await prisma.event.findFirst({
-      where: { id, plannerId: session.uid },
+    const events = await prisma.event.findMany({
+      where: { plannerId: session.uid },
+      orderBy: { createdAt: "desc" },
       include: {
-        guestTiers: {
-          include: { _count: { select: { guests: true } } },
-          orderBy: { createdAt: "asc" },
-        },
-        menuItems: { orderBy: { sortOrder: "asc" } },
-        vendors:   true,
-        ushers:    true,
+        guestTiers: { select: { id: true, name: true, color: true } },
         _count: { select: { guests: true } },
       },
     })
 
-    if (!event) {
-      return NextResponse.json({ error: "Event not found" }, { status: 404 })
-    }
-
-    return NextResponse.json({ event })
+    return NextResponse.json(events)
   } catch (err) {
-    console.error("[GET /api/events/[id]]", err)
+    console.error("[GET /api/events]", err)
     return NextResponse.json({ error: "Server error" }, { status: 500 })
   }
 }
 
-// ── PATCH /api/events/[id] ────────────────────
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// ── POST /api/events — create event ───────────
+export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { id } = await params
-
   try {
-    const existing = await prisma.event.findFirst({
-      where: { id, plannerId: session.uid },
-    })
-    if (!existing) {
-      return NextResponse.json({ error: "Event not found" }, { status: 404 })
-    }
-
     const body = await req.json()
 
     const {
-      name, description, eventType,
-      date, startTime, endTime,
+      name, eventType, eventDate, startTime, endTime,
       venueName, venueAddress, venueCapacity,
+      description, invitationCard,
       inviteModel, requireOtp, rsvpDeadline,
-      brandColor, brandLogo, invitationCard,
-      status,
+      brandColor,
+      tiers = [],
+      totalTables, seatsPerTable, releaseReservedAfter,
+      menuItems = [],
+      status = "DRAFT",
     } = body
 
-    const VALID_STATUSES = ["DRAFT", "PUBLISHED", "ONGOING", "COMPLETED", "CANCELLED"]
-    if (status && !VALID_STATUSES.includes(status)) {
-      return NextResponse.json({ error: "Invalid status" }, { status: 400 })
+    if (!name || !eventDate) {
+      return NextResponse.json({ error: "Name and date are required" }, { status: 400 })
     }
 
-    const updated = await prisma.event.update({
-      where: { id },
+    // Generate slug from name + timestamp
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      + "-" + Date.now().toString(36)
+
+    const event = await prisma.event.create({
       data: {
-        ...(name           !== undefined && { name }),
-        ...(description    !== undefined && { description }),
-        ...(eventType      !== undefined && { eventType }),
-        ...(date           !== undefined && { eventDate: new Date(date) }),
-        ...(startTime      !== undefined && { startTime }),
-        ...(endTime        !== undefined && { endTime }),
-        ...(venueName      !== undefined && { venueName }),
-        ...(venueAddress   !== undefined && { venueAddress }),
-        ...(venueCapacity  !== undefined && { venueCapacity: venueCapacity ? Number(venueCapacity) : null }),
-        ...(inviteModel    !== undefined && { inviteModel }),
-        ...(requireOtp     !== undefined && { requireOtp }),
-        ...(rsvpDeadline   !== undefined && { rsvpDeadline: rsvpDeadline ? new Date(rsvpDeadline) : null }),
-        ...(brandColor     !== undefined && { brandColor }),
-        ...(brandLogo      !== undefined && { brandLogo }),
-        ...(invitationCard !== undefined && { invitationCard }),
-        ...(status         !== undefined && { status }),
-      },
-      include: {
-        guestTiers: {
-          include: { _count: { select: { guests: true } } },
-          orderBy: { createdAt: "asc" },
-        },
-        _count: { select: { guests: true } },
+        plannerId:            session.uid,
+        name,
+        slug,
+        description:          description          || null,
+        eventType:            eventType            || "WEDDING",
+        eventDate:            new Date(eventDate),
+        startTime:            startTime            || null,
+        endTime:              endTime              || null,
+        venueName:            venueName            || null,
+        venueAddress:         venueAddress         || null,
+        venueCapacity:        venueCapacity        ? Number(venueCapacity)        : null,
+        invitationCard:       invitationCard       || null,
+        inviteModel:          inviteModel          || "OPEN",
+        requireOtp:           requireOtp           ?? false,
+        rsvpDeadline:         rsvpDeadline         ? new Date(rsvpDeadline)       : null,
+        brandColor:           brandColor           || "#C9A84C",
+        totalTables:          totalTables          ? Number(totalTables)          : null,
+        seatsPerTable:        seatsPerTable        ? Number(seatsPerTable)        : null,
+        releaseReservedAfter: releaseReservedAfter ? Number(releaseReservedAfter) : null,
+        status,
+
+        // Create tiers
+        guestTiers: tiers.length > 0 ? {
+          create: tiers.map((t: {
+            name: string; color?: string; seatingType?: string;
+            menuAccess?: string; maxGuests?: string; tablePrefix?: string;
+          }) => ({
+            name:        t.name,
+            color:       t.color       || "#b48c3c",
+            seatingType: t.seatingType || "DYNAMIC",
+            menuAccess:  t.menuAccess  || "AT_EVENT",
+            maxGuests:   t.maxGuests   ? Number(t.maxGuests) : null,
+            tablePrefix: t.tablePrefix || null,
+          })),
+        } : undefined,
+
+        // Create menu items
+        menuItems: menuItems.length > 0 ? {
+          create: menuItems.map((m: {
+            category: string; name: string; description?: string;
+          }, i: number) => ({
+            category:    m.category,
+            name:        m.name,
+            description: m.description || null,
+            sortOrder:   i,
+          })),
+        } : undefined,
       },
     })
 
-    return NextResponse.json({ event: updated })
+    return NextResponse.json(event, { status: 201 })
   } catch (err) {
-    console.error("[PATCH /api/events/[id]]", err)
-    return NextResponse.json({ error: "Server error" }, { status: 500 })
-  }
-}
-
-// ── DELETE /api/events/[id] ───────────────────
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await auth()
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
-  const { id } = await params
-
-  try {
-    const existing = await prisma.event.findFirst({
-      where: { id, plannerId: session.uid },
-    })
-    if (!existing) {
-      return NextResponse.json({ error: "Event not found" }, { status: 404 })
-    }
-
-    await prisma.event.delete({ where: { id } })
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    console.error("[DELETE /api/events/[id]]", err)
+    console.error("[POST /api/events]", err)
     return NextResponse.json({ error: "Server error" }, { status: 500 })
   }
 }
