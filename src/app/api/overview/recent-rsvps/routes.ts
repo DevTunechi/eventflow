@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────
-// src/app/api/auth/overview/upcoming/route.ts
+// src/app/api/overview/recent-rsvps/route.ts
 //
-// Returns the next 5 upcoming events for the
-// planner, ordered by date ascending.
+// Returns the 8 most recent RSVP submissions
+// across all of the planner's events.
 // ─────────────────────────────────────────────
 
 import { NextResponse } from "next/server"
@@ -25,30 +25,30 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    // Fetch next 5 upcoming events, soonest first
-    const events = await prisma.event.findMany({
+    // Most recent RSVPs across all planner events
+    const rsvps = await prisma.guest.findMany({
       where: {
-        plannerId: planner.id,
-        eventDate: { gte: new Date() }, // only future events
-        status: { not: "CANCELLED" },
+        event: { plannerId: planner.id },
+        rsvpAt: { not: null }, // only guests who have actually RSVPd
       },
-      orderBy: { eventDate: "asc" },
-      take: 5,
+      orderBy: { rsvpAt: "desc" }, // most recent first
+      take: 8,
       select: {
-        id:        true,
-        name:      true,
-        eventDate: true,
-        status:    true,
-        _count: {
-          select: { guests: true }, // guest count per event
+        id:         true,
+        firstName:  true,
+        lastName:   true,
+        rsvpAt:     true,
+        rsvpStatus: true,
+        event: {
+          select: { name: true }, // event name for context in the feed
         },
       },
     })
 
-    return NextResponse.json(events)
+    return NextResponse.json(rsvps)
 
   } catch (error) {
-    console.error("Upcoming events error:", error)
-    return NextResponse.json({ error: "Failed to fetch events" }, { status: 500 })
+    console.error("Recent RSVPs error:", error)
+    return NextResponse.json({ error: "Failed to fetch RSVPs" }, { status: 500 })
   }
 }
