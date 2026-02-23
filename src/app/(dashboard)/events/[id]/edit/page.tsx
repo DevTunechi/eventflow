@@ -205,7 +205,7 @@ export default function EditEventPage() {
           tiers: (event.guestTiers ?? []).map((t: {
             id: string; name: string; color: string;
             seatingType: SeatingType; menuAccess: MenuAccess;
-            capacity?: number; tablePrefix?: string | null
+            maxGuests?: number; tablePrefix?: string | null
           }) => ({
             id:          t.id,
             name:        t.name,
