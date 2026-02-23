@@ -23,7 +23,7 @@ interface Stats {
   pendingRsvps:   number
   totalVendors:   number
   upcomingEvents: number
-  gateCrashers:   number // guests who scanned twice — flagged on entry
+  gateCrashers:   number
 }
 
 interface UpcomingEvent {
@@ -113,7 +113,7 @@ const getStatCards = (s: Stats) => [
     label: "Gate Crashers",
     value: s.gateCrashers,
     accent: "#ef4444",
-    alert: true, // shows red alert badge if value > 0
+    alert: true,
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
@@ -161,25 +161,22 @@ const timeAgo = (iso: string) => {
 // Component
 // ─────────────────────────────────────────────
 export default function OverviewPage() {
-  // ── Pull sessionToken from context so we wait for auth ──
-  const { user, sessionToken } = useAuth()
+  const { user } = useAuth()
 
   const [stats,          setStats]          = useState<Stats | null>(null)
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
   const [recentRsvps,    setRecentRsvps]    = useState<RecentRsvp[]>([])
   const [loading,        setLoading]        = useState(true)
 
-  // ── Only fetch once sessionToken is available ──
+  // Fetch all three data sources in parallel on mount.
+  // The ef-session cookie is sent automatically — no manual auth header needed.
   useEffect(() => {
-    if (!sessionToken) return // wait for auth to resolve
-
     const load = async () => {
       try {
-        const hdrs = { Authorization: `Bearer ${sessionToken}` }
         const [sRes, eRes, rRes] = await Promise.all([
-          fetch("/api/auth/overview/stats",        { headers: hdrs }),
-          fetch("/api/auth/overview/upcoming",     { headers: hdrs }),
-          fetch("/api/auth/overview/recent-rsvps", { headers: hdrs }),
+          fetch("/api/overview/stats"),
+          fetch("/api/overview/upcoming"),
+          fetch("/api/overview/recent-rsvps"),
         ])
         if (sRes.ok) setStats(await sRes.json())
         if (eRes.ok) setUpcomingEvents(await eRes.json())
@@ -190,9 +187,8 @@ export default function OverviewPage() {
         setLoading(false)
       }
     }
-
     load()
-  }, [sessionToken]) // re-runs when token becomes available
+  }, [])
 
   // Time-based greeting
   const hour      = new Date().getHours()
@@ -251,7 +247,6 @@ export default function OverviewPage() {
           transform: translateY(-2px);
         }
 
-        /* Coloured top accent line per card */
         .ov-stat-card::before {
           content: '';
           position: absolute;
@@ -276,7 +271,6 @@ export default function OverviewPage() {
 
         .ov-stat-icon svg { width: 16px; height: 16px; }
 
-        /* Red "Alert" badge — only on gate crashers when > 0 */
         .ov-stat-alert {
           font-size: 0.6rem;
           font-weight: 500;
@@ -312,7 +306,6 @@ export default function OverviewPage() {
           gap: 1.5rem;
         }
 
-        /* ── Section card ── */
         .ov-section {
           background: var(--bg-2);
           border: 1px solid var(--border);
@@ -346,7 +339,6 @@ export default function OverviewPage() {
 
         .ov-section-link:hover { opacity: 1; }
 
-        /* ── Event rows ── */
         .ov-event-item {
           display: flex;
           align-items: center;
@@ -387,7 +379,6 @@ export default function OverviewPage() {
           margin-left: 1rem;
         }
 
-        /* Reusable pill badge */
         .ov-badge {
           font-size: 0.58rem;
           font-weight: 500;
@@ -397,7 +388,6 @@ export default function OverviewPage() {
           border-radius: 20px;
         }
 
-        /* ── RSVP rows ── */
         .ov-rsvp-item {
           display: flex;
           align-items: center;
@@ -408,7 +398,6 @@ export default function OverviewPage() {
 
         .ov-rsvp-item:last-child { border-bottom: none; }
 
-        /* Initial avatar circle */
         .ov-rsvp-avatar {
           width: 32px; height: 32px;
           border-radius: 50%;
@@ -451,7 +440,6 @@ export default function OverviewPage() {
 
         .ov-rsvp-time { font-size: 0.65rem; color: var(--text-3); }
 
-        /* ── Empty state ── */
         .ov-empty {
           padding: 2.5rem 1.25rem;
           text-align: center;
@@ -460,7 +448,6 @@ export default function OverviewPage() {
           line-height: 1.8;
         }
 
-        /* ── Skeleton shimmer ── */
         .ov-skeleton {
           background: var(--bg-3);
           border-radius: 6px;
@@ -472,7 +459,6 @@ export default function OverviewPage() {
           50%       { opacity: 0.75; }
         }
 
-        /* ── Responsive ── */
         @media (max-width: 1024px) {
           .ov-stats { grid-template-columns: repeat(3, 1fr); }
         }
@@ -496,7 +482,7 @@ export default function OverviewPage() {
             {greeting}, <em>{firstName}.</em>
           </h2>
           <p className="ov-greeting-sub">
-            Here's what's happening across your events.
+            Here&apos;s what&apos;s happening across your events.
           </p>
         </div>
 
@@ -504,7 +490,6 @@ export default function OverviewPage() {
         <div className="ov-stats">
           {loading
             ? Array.from({ length: 7 }).map((_, i) => (
-                // Skeleton placeholders while loading
                 <div key={i} className="ov-stat-card">
                   <div className="ov-skeleton" style={{ height: 36, width: 36, borderRadius: 8 }} />
                   <div className="ov-skeleton" style={{ height: 40, width: "55%" }} />
@@ -525,12 +510,10 @@ export default function OverviewPage() {
                       >
                         {card.icon}
                       </div>
-
                       {card.alert && card.value > 0 && (
                         <span className="ov-stat-alert">Alert</span>
                       )}
                     </div>
-
                     <div className="ov-stat-value">{card.value}</div>
                     <div className="ov-stat-label">{card.label}</div>
                   </div>
@@ -563,7 +546,7 @@ export default function OverviewPage() {
                 ? (
                   <div className="ov-empty">
                     No upcoming events yet.<br />
-                    <Link href="/events" style={{ color: "var(--gold)", fontSize: "0.75rem" }}>
+                    <Link href="/events/new" style={{ color: "var(--gold)", fontSize: "0.75rem" }}>
                       Create your first event →
                     </Link>
                   </div>
@@ -625,12 +608,10 @@ export default function OverviewPage() {
                       <div className="ov-rsvp-avatar">
                         {rsvp.firstName[0]?.toUpperCase()}
                       </div>
-
                       <div className="ov-rsvp-info">
                         <div className="ov-rsvp-name">{rsvp.firstName} {rsvp.lastName}</div>
                         <div className="ov-rsvp-event">{rsvp.event.name}</div>
                       </div>
-
                       <div className="ov-rsvp-right">
                         <span
                           className="ov-badge"
