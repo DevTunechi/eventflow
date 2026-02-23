@@ -1,154 +1,143 @@
-// ─────────────────────────────────────────────
-// src/app/api/events/route.ts
-//
-// GET  /api/events        — list planner's events
-// POST /api/events        — create a new event
-// ─────────────────────────────────────────────
+// src/app/api/events/[id]/route.ts
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth-server"
+import { prisma } from "@/lib/prisma"
 
-// ── GET — list all events for this planner ────
-export async function GET() {
+// ── GET /api/events/[id] ──────────────────────
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const { id } = await params
+
   try {
-    const session = await auth()
-    if (!session?.email) {
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
-    }
-
-    const planner = await prisma.user.findUnique({
-      where: { email: session.email },
-      select: { id: true },
-    })
-
-    if (!planner) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
-    }
-
-    const events = await prisma.event.findMany({
-      where: { plannerId: planner.id },
-      orderBy: { eventDate: "asc" },
-      select: {
-        id:             true,
-        name:           true,
-        slug:           true,
-        eventType:      true,
-        eventDate:      true,
-        status:         true,
-        inviteModel:    true,
-        invitationCard: true,
-        venueName:      true,
-        venueCapacity:  true,
-        _count: {
-          select: {
-            guests:  true,
-            vendors: true,
-          },
+    const event = await prisma.event.findFirst({
+      where: { id, plannerId: session.uid },
+      include: {
+        guestTiers: {
+          include: { _count: { select: { guests: true } } },
+          orderBy: { createdAt: "asc" },
         },
+        menuItems: { orderBy: { sortOrder: "asc" } },
+        vendors:   true,
+        ushers:    true,
+        _count: { select: { guests: true } },
       },
     })
 
-    return NextResponse.json(events)
+    if (!event) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 })
+    }
 
-  } catch (error) {
-    console.error("Events list error:", error)
-    return NextResponse.json({ error: "Failed to fetch events" }, { status: 500 })
+    return NextResponse.json({ event })
+  } catch (err) {
+    console.error("[GET /api/events/[id]]", err)
+    return NextResponse.json({ error: "Server error" }, { status: 500 })
   }
 }
 
-// ── POST — create a new event ─────────────────
-export async function POST(req: NextRequest) {
+// ── PATCH /api/events/[id] ────────────────────
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const { id } = await params
+
   try {
-    const session = await auth()
-    if (!session?.email) {
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
-    }
-
-    const planner = await prisma.user.findUnique({
-      where: { email: session.email },
-      select: { id: true },
+    const existing = await prisma.event.findFirst({
+      where: { id, plannerId: session.uid },
     })
-
-    if (!planner) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    if (!existing) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 })
     }
 
     const body = await req.json()
 
     const {
-      name,
-      slug,
-      description,
-      eventType,
-      eventDate,
-      startTime,
-      endTime,
-      venueName,
-      venueAddress,
-      venueCapacity,
-      inviteModel,
-      requireOtp,
-      rsvpDeadline,
-      invitationCard,
-      totalTables,
-      seatsPerTable,
-      releaseReservedAfter,
-      brandColor,
+      name, description, eventType,
+      date, startTime, endTime,
+      venueName, venueAddress, venueCapacity,
+      inviteModel, requireOtp, rsvpDeadline,
+      brandColor, brandLogo, invitationCard,
+      status,
     } = body
 
-    // Validate required fields
-    if (!name || !eventDate) {
-      return NextResponse.json(
-        { error: "Event name and date are required" },
-        { status: 400 }
-      )
+    const VALID_STATUSES = ["DRAFT", "PUBLISHED", "ONGOING", "COMPLETED", "CANCELLED"]
+    if (status && !VALID_STATUSES.includes(status)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 })
     }
 
-    // Generate slug from name if not provided
-    // e.g. "Tunde & Amaka's Wedding" → "tunde-amakas-wedding"
-    const finalSlug = slug ?? name
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, "")  // remove special chars
-      .replace(/\s+/g, "-")           // spaces to hyphens
-      .replace(/-+/g, "-")            // deduplicate hyphens
-      .trim()
-
-    // Ensure slug is unique — append random suffix if taken
-    const existing = await prisma.event.findUnique({ where: { slug: finalSlug } })
-    const uniqueSlug = existing
-      ? `${finalSlug}-${Math.random().toString(36).slice(2, 6)}`
-      : finalSlug
-
-    const event = await prisma.event.create({
+    const updated = await prisma.event.update({
+      where: { id },
       data: {
-        plannerId:           planner.id,
-        name,
-        slug:                uniqueSlug,
-        description:         description ?? null,
-        eventType:           eventType   ?? "OTHER",
-        eventDate:           new Date(eventDate),
-        startTime:           startTime   ?? null,
-        endTime:             endTime     ?? null,
-        venueName:           venueName   ?? null,
-        venueAddress:        venueAddress ?? null,
-        venueCapacity:       venueCapacity ? Number(venueCapacity) : null,
-        inviteModel:         inviteModel  ?? "OPEN",
-        requireOtp:          requireOtp   ?? false,
-        rsvpDeadline:        rsvpDeadline ? new Date(rsvpDeadline) : null,
-        invitationCard:      invitationCard ?? null,
-        totalTables:         totalTables   ? Number(totalTables)   : null,
-        seatsPerTable:       seatsPerTable ? Number(seatsPerTable) : null,
-        releaseReservedAfter: releaseReservedAfter ? Number(releaseReservedAfter) : null,
-        brandColor:          brandColor ?? "#C9A84C",
-        status:              "DRAFT",
+        ...(name           !== undefined && { name }),
+        ...(description    !== undefined && { description }),
+        ...(eventType      !== undefined && { eventType }),
+        ...(date           !== undefined && { eventDate: new Date(date) }),
+        ...(startTime      !== undefined && { startTime }),
+        ...(endTime        !== undefined && { endTime }),
+        ...(venueName      !== undefined && { venueName }),
+        ...(venueAddress   !== undefined && { venueAddress }),
+        ...(venueCapacity  !== undefined && { venueCapacity: venueCapacity ? Number(venueCapacity) : null }),
+        ...(inviteModel    !== undefined && { inviteModel }),
+        ...(requireOtp     !== undefined && { requireOtp }),
+        ...(rsvpDeadline   !== undefined && { rsvpDeadline: rsvpDeadline ? new Date(rsvpDeadline) : null }),
+        ...(brandColor     !== undefined && { brandColor }),
+        ...(brandLogo      !== undefined && { brandLogo }),
+        ...(invitationCard !== undefined && { invitationCard }),
+        ...(status         !== undefined && { status }),
+      },
+      include: {
+        guestTiers: {
+          include: { _count: { select: { guests: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+        _count: { select: { guests: true } },
       },
     })
 
-    return NextResponse.json(event, { status: 201 })
+    return NextResponse.json({ event: updated })
+  } catch (err) {
+    console.error("[PATCH /api/events/[id]]", err)
+    return NextResponse.json({ error: "Server error" }, { status: 500 })
+  }
+}
 
-  } catch (error) {
-    console.error("Event create error:", error)
-    return NextResponse.json({ error: "Failed to create event" }, { status: 500 })
+// ── DELETE /api/events/[id] ───────────────────
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const { id } = await params
+
+  try {
+    const existing = await prisma.event.findFirst({
+      where: { id, plannerId: session.uid },
+    })
+    if (!existing) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 })
+    }
+
+    await prisma.event.delete({ where: { id } })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("[DELETE /api/events/[id]]", err)
+    return NextResponse.json({ error: "Server error" }, { status: 500 })
   }
 }
