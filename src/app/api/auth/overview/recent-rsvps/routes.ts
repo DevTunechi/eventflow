@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────
-// src/app/api/overview/recent-rsvps/route.ts
+// src/app/api/auth/overview/recent-rsvps/route.ts
 //
 // Returns the 8 most recent RSVP submissions
 // across all of the planner's events.

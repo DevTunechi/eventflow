@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────
-// src/app/api/overview/stats/route.ts
+// src/app/api/auth/overview/stats/route.ts
 //
 // Returns the 7 stat card counts for the
 // Overview page. All counts are scoped to

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────
-// src/app/api/overview/upcoming/route.ts
+// src/app/api/auth/overview/upcoming/route.ts
 //
 // Returns the next 5 upcoming events for the
 // planner, ordered by date ascending.
