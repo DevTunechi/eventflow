@@ -188,16 +188,16 @@ export default function EditEventPage() {
         const toTimeStr = (d: string | null) => d ? new Date(d).toISOString().slice(11, 16) : ""
 
         setForm({
-          name:                 event.title          ?? "",
+          name:                 event.name          ?? "",
           eventType:            event.eventType       ?? "WEDDING",
-          eventDate:            toDateStr(event.date),
-          startTime:            toTimeStr(event.date),
+          eventDate:            toDateStr(event.eventDate),
+          startTime:            toTimeStr(event.eventDate),
           endTime:              event.endDate ? toTimeStr(event.endDate) : "",
-          venueName:            event.venue           ?? "",
+          venueName:            event.venueName           ?? "",
           venueAddress:         event.city && event.state ? `${event.city}, ${event.state}` : "",
           venueCapacity:        event.venueCapacity   ? String(event.venueCapacity) : "",
           description:          event.description     ?? "",
-          invitationCard:       event.coverImage      ?? "",
+          invitationCard:       event.invitationCard      ?? "",
           inviteModel:          event.inviteModel     ?? "OPEN",
           requireOtp:           event.requireOtp      ?? false,
           rsvpDeadline:         toDateStr(event.rsvpDeadline),
@@ -212,7 +212,7 @@ export default function EditEventPage() {
             color:       t.color,
             seatingType: t.seatingType,
             menuAccess:  t.menuAccess,
-            maxGuests:   t.capacity ? String(t.capacity) : "",
+            maxGuests:   t.maxGuests ? String(t.maxGuests) : "",
             tablePrefix: t.tablePrefix ?? "",
           })),
           totalTables:          event.totalTables          ? String(event.totalTables)          : "",
@@ -228,7 +228,7 @@ export default function EditEventPage() {
           })),
         })
 
-        if (event.coverImage) setCardPreview(event.coverImage)
+        if (event.invitationCard) setCardPreview(event.invitationCard)
       } catch (err) {
         console.error(err)
         setError("Could not load event data.")
@@ -329,7 +329,7 @@ export default function EditEventPage() {
         method: "PATCH",
         headers: hdrs,
         body: JSON.stringify({
-          title:                form.name,
+          name: form.name,
           description:          form.description         || null,
           date:                 form.eventDate && form.startTime
                                   ? `${form.eventDate}T${form.startTime}:00`
@@ -337,8 +337,8 @@ export default function EditEventPage() {
           endDate:              form.eventDate && form.endTime
                                   ? `${form.eventDate}T${form.endTime}:00`
                                   : null,
-          venue:                form.venueName,
-          coverImage:           form.invitationCard      || null,
+          venueName: form.venueName,
+          invitationCard: form.invitationCard      || null,
           brandColor:           form.brandColor          || null,
           inviteModel:          form.inviteModel,
           requireOtp:           form.requireOtp,
