@@ -161,24 +161,25 @@ const timeAgo = (iso: string) => {
 // Component
 // ─────────────────────────────────────────────
 export default function OverviewPage() {
-  const { user } = useAuth()
+  // ── Pull sessionToken from context so we wait for auth ──
+  const { user, sessionToken } = useAuth()
 
   const [stats,          setStats]          = useState<Stats | null>(null)
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
   const [recentRsvps,    setRecentRsvps]    = useState<RecentRsvp[]>([])
   const [loading,        setLoading]        = useState(true)
 
-  // Fetch all three data sources in parallel on mount
+  // ── Only fetch once sessionToken is available ──
   useEffect(() => {
+    if (!sessionToken) return // wait for auth to resolve
+
     const load = async () => {
       try {
-        const token = localStorage.getItem("ef-session") ?? ""
-        const hdrs: Record<string, string> = {};
-        if (token) hdrs["Authorization"] = `Bearer ${token}`;
+        const hdrs = { Authorization: `Bearer ${sessionToken}` }
         const [sRes, eRes, rRes] = await Promise.all([
-          fetch("/api/auth/overview/stats",       { headers: hdrs }),
-          fetch("/api/auth/overview/upcoming",    { headers: hdrs }),
-          fetch("/api/auth/overview/recent-rsvps",{ headers: hdrs }),
+          fetch("/api/auth/overview/stats",        { headers: hdrs }),
+          fetch("/api/auth/overview/upcoming",     { headers: hdrs }),
+          fetch("/api/auth/overview/recent-rsvps", { headers: hdrs }),
         ])
         if (sRes.ok) setStats(await sRes.json())
         if (eRes.ok) setUpcomingEvents(await eRes.json())
@@ -189,8 +190,9 @@ export default function OverviewPage() {
         setLoading(false)
       }
     }
+
     load()
-  }, [])
+  }, [sessionToken]) // re-runs when token becomes available
 
   // Time-based greeting
   const hour      = new Date().getHours()
@@ -514,7 +516,6 @@ export default function OverviewPage() {
                   <div
                     key={card.label}
                     className="ov-stat-card"
-                    // CSS custom property drives the top accent colour
                     style={{ "--card-accent": card.accent } as React.CSSProperties}
                   >
                     <div className="ov-stat-top">
@@ -525,7 +526,6 @@ export default function OverviewPage() {
                         {card.icon}
                       </div>
 
-                      {/* Alert badge — only shows for gate crashers with value > 0 */}
                       {card.alert && card.value > 0 && (
                         <span className="ov-stat-alert">Alert</span>
                       )}
@@ -622,7 +622,6 @@ export default function OverviewPage() {
                 )
                 : recentRsvps.map(rsvp => (
                     <div key={rsvp.id} className="ov-rsvp-item">
-                      {/* First letter of first name as avatar */}
                       <div className="ov-rsvp-avatar">
                         {rsvp.firstName[0]?.toUpperCase()}
                       </div>
