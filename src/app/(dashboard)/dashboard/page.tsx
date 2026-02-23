@@ -177,9 +177,9 @@ export default function OverviewPage() {
       try {
         const hdrs = { Authorization: `Bearer ${sessionToken}` }
         const [sRes, eRes, rRes] = await Promise.all([
-          fetch("/api/auth/overview/stats",        { headers: hdrs }),
-          fetch("/api/auth/overview/upcoming",     { headers: hdrs }),
-          fetch("/api/auth/overview/recent-rsvps", { headers: hdrs }),
+          fetch("/api/overview/stats"),
+          fetch("/api/overview/upcoming"),
+          fetch("/api/overview/recent-rsvps"),
         ])
         if (sRes.ok) setStats(await sRes.json())
         if (eRes.ok) setUpcomingEvents(await eRes.json())
