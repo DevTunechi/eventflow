@@ -32,7 +32,8 @@ const buildSession = (firebaseUser: User): string => {
   }
   const encoded = btoa(JSON.stringify(payload))
   // Cookie — server-side API routes read this
-  document.cookie = `ef-session=${encoded}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`
+  const isSecure = location.protocol === "https:"
+  document.cookie = `ef-session=${encoded}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax${isSecure ? "; Secure" : ""}`
   // localStorage — so we can restore token on page reload
   localStorage.setItem("ef-session", encoded)
   return encoded

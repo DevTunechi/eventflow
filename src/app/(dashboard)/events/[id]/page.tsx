@@ -73,21 +73,30 @@ export default function EventDetailPage() {
   const [publishing, setPublishing] = useState(false)
   const [deleting,   setDeleting]   = useState(false)
 
+  // ── Use base64 session token (same as auth-server.ts expects) ──
+  const getAuthHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem("ef-session") ?? ""
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }
+
   const fetchEvent = useCallback(async () => {
     try {
-      const token = await user?.getIdToken()
-      const hdrs: Record<string, string> = {}
-      if (token) hdrs["Authorization"] = `Bearer ${token}`
-      const res = await fetch(`/api/events/${id}`, { headers: hdrs })
+      const res = await fetch(`/api/events/${id}`, { headers: getAuthHeaders() })
       if (!res.ok) throw new Error("Failed to load event")
       const data = await res.json()
-      setEvent(data.event)
+      // Default arrays to [] so .length / .map never crash
+      setEvent({
+        ...data.event,
+        guestTiers: data.event.guestTiers ?? [],
+        vendors:    data.event.vendors    ?? [],
+        ushers:     data.event.ushers     ?? [],
+      })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unknown error")
     } finally {
       setLoading(false)
     }
-  }, [id, user])
+  }, [id])
 
   useEffect(() => { fetchEvent() }, [fetchEvent])
 
@@ -101,16 +110,19 @@ export default function EventDetailPage() {
     if (!event) return
     setPublishing(true)
     try {
-      const token = await user?.getIdToken()
-      const hdrs: Record<string, string> = { "Content-Type": "application/json" }
-      if (token) hdrs["Authorization"] = `Bearer ${token}`
       const res = await fetch(`/api/events/${id}`, {
-        method: "PATCH", headers: hdrs,
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ status: "PUBLISHED" }),
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
-      setEvent(data.event)
+      setEvent({
+        ...data.event,
+        guestTiers: data.event.guestTiers ?? [],
+        vendors:    data.event.vendors    ?? [],
+        ushers:     data.event.ushers     ?? [],
+      })
     } catch { console.error("Publish failed") }
     finally { setPublishing(false) }
   }
@@ -119,10 +131,7 @@ export default function EventDetailPage() {
     if (!event || !confirm("Delete this event? This cannot be undone.")) return
     setDeleting(true)
     try {
-      const token = await user?.getIdToken()
-      const hdrs: Record<string, string> = {}
-      if (token) hdrs["Authorization"] = `Bearer ${token}`
-      await fetch(`/api/events/${id}`, { method: "DELETE", headers: hdrs })
+      await fetch(`/api/events/${id}`, { method: "DELETE", headers: getAuthHeaders() })
       router.push("/events")
     } catch { setDeleting(false) }
   }
