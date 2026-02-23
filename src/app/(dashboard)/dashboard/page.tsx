@@ -162,7 +162,7 @@ const timeAgo = (iso: string) => {
 // ─────────────────────────────────────────────
 export default function OverviewPage() {
   // ── Pull sessionToken from context so we wait for auth ──
-  const { user, sessionToken } = useAuth()
+  const { user } = useAuth()
 
   const [stats,          setStats]          = useState<Stats | null>(null)
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([])
@@ -171,11 +171,11 @@ export default function OverviewPage() {
 
   // ── Only fetch once sessionToken is available ──
   useEffect(() => {
-    if (!sessionToken) return // wait for auth to resolve
+    
 
     const load = async () => {
       try {
-        const hdrs = { Authorization: `Bearer ${sessionToken}` }
+        
         const [sRes, eRes, rRes] = await Promise.all([
           fetch("/api/overview/stats"),
           fetch("/api/overview/upcoming"),
@@ -192,7 +192,7 @@ export default function OverviewPage() {
     }
 
     load()
-  }, [sessionToken]) // re-runs when token becomes available
+  }, []) // re-runs when token becomes available
 
   // Time-based greeting
   const hour      = new Date().getHours()
