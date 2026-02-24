@@ -93,6 +93,6 @@ export async function POST(request: NextRequest) {
 }
 
 // Disable Next.js body parser — needed for multipart
-export const config = {
-  api: { bodyParser: false },
-}
+
+// Disable body parser for multipart uploads (App Router syntax)
+export const runtime = 'nodejs'
