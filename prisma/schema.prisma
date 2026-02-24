@@ -25,6 +25,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─────────────────────────────────────────────
@@ -95,6 +96,15 @@ model User {
   accounts      Account[]
   sessions      Session[]
   events        Event[]
+  // ── WHATSAPP BUSINESS ─────────────────────
+  waAccessToken   String?
+  waPhoneNumberId String?
+  waWabaId        String?
+  waDisplayName   String?
+  waPhoneNumber   String?
+  waBusinessName  String?
+  waConnectedAt   DateTime?
+  waMessagesSent  Int       @default(0)
 }
 
 // ─────────────────────────────────────────────
@@ -677,3 +687,4 @@ enum GiftStatus {
   RECEIVED    // Usher confirmed receipt of physical gift
   COMPLETED   // Cash transfer confirmed
 }
+
