@@ -34,9 +34,10 @@ function decrypt(ciphertext: string): string {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await auth()
     if (!session?.email) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
@@ -59,7 +60,7 @@ export async function POST(
     }
 
     const event = await prisma.event.findFirst({
-      where:  { id: params.id, plannerId: user.id },
+      where:  { id, plannerId: user.id },
       select: { id: true, name: true, slug: true, inviteModel: true },
     })
     if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 })
@@ -70,7 +71,7 @@ export async function POST(
     if (!guestIds?.length) return NextResponse.json({ error: "No guest IDs provided" }, { status: 400 })
 
     const guests = await prisma.guest.findMany({
-      where: { id: { in: guestIds }, eventId: params.id },
+      where: { id: { in: guestIds }, eventId: id },
       select: { id: true, firstName: true, lastName: true, phone: true, inviteToken: true },
     })
 

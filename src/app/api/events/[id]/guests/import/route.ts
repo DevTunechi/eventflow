@@ -20,9 +20,10 @@ interface GuestRow {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await auth()
     if (!session?.email) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
@@ -33,7 +34,7 @@ export async function POST(
     if (!planner) return NextResponse.json({ error: "User not found" }, { status: 404 })
 
     const event = await prisma.event.findFirst({
-      where: { id: params.id, plannerId: planner.id },
+      where: { id, plannerId: planner.id },
       select: { id: true, inviteModel: true },
     })
     if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 })
@@ -46,7 +47,7 @@ export async function POST(
 
     // Load existing guests to skip duplicates
     const existing = await prisma.guest.findMany({
-      where:  { eventId: params.id },
+      where:  { eventId: id },
       select: { firstName: true, lastName: true, phone: true },
     })
 
@@ -73,7 +74,7 @@ export async function POST(
     // Batch create
     await prisma.guest.createMany({
       data: toCreate.map(r => ({
-        eventId:      params.id,
+        eventId:      id,
         firstName:    r.firstName.trim(),
         lastName:     r.lastName.trim(),
         phone:        r.phone?.trim() || null,

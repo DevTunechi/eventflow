@@ -28,17 +28,18 @@ async function verifyEventOwner(eventId: string, plannerId: string) {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const planner = await getPlanner()
     if (!planner) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-    const event = await verifyEventOwner(params.id, planner.id)
+    const event = await verifyEventOwner(id, planner.id)
     if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 })
 
     const guests = await prisma.guest.findMany({
-      where:   { eventId: params.id },
+      where:   { eventId: id },
       orderBy: { createdAt: "desc" },
       select: {
         id:           true,
@@ -71,13 +72,14 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const planner = await getPlanner()
     if (!planner) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
-    const event = await verifyEventOwner(params.id, planner.id)
+    const event = await verifyEventOwner(id, planner.id)
     if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 })
 
     const body = await req.json()
@@ -94,7 +96,7 @@ export async function POST(
 
     const guest = await prisma.guest.create({
       data: {
-        eventId:      params.id,
+        eventId:      id,
         firstName:    firstName.trim(),
         lastName:     lastName.trim(),
         phone:        phone?.trim() || null,
