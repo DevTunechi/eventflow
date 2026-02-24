@@ -10,9 +10,11 @@ import { auth } from "@/lib/auth-server"
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string; guestId: string } }
+  { params }: { params: Promise<{ id: string; guestId: string }> }
 ) {
   try {
+    const { id, guestId } = await params
+
     const session = await auth()
     if (!session?.email) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
@@ -24,19 +26,19 @@ export async function DELETE(
 
     // Verify the event belongs to this planner
     const event = await prisma.event.findFirst({
-      where: { id: params.id, plannerId: planner.id },
+      where: { id, plannerId: planner.id },
       select: { id: true },
     })
     if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 })
 
     // Verify the guest belongs to this event
     const guest = await prisma.guest.findFirst({
-      where: { id: params.guestId, eventId: params.id },
+      where: { id: guestId, eventId: id },
       select: { id: true },
     })
     if (!guest) return NextResponse.json({ error: "Guest not found" }, { status: 404 })
 
-    await prisma.guest.delete({ where: { id: params.guestId } })
+    await prisma.guest.delete({ where: { id: guestId } })
 
     return NextResponse.json({ success: true })
   } catch (error) {
