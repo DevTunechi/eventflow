@@ -23,44 +23,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth-server"
-import crypto from "crypto"
-
-// ── Encryption helpers ────────────────────────
-// Uses AES-256-GCM with a random IV per value.
-// ENCRYPTION_KEY must be a 64-char hex string
-// (32 bytes). Set in your .env:
-//   ENCRYPTION_KEY=<run: openssl rand -hex 32>
-
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? ""
-
-function encrypt(plaintext: string): string {
-  if (!ENCRYPTION_KEY) return plaintext // fallback if key not set (dev only)
-  const key = Buffer.from(ENCRYPTION_KEY, "hex")
-  const iv  = crypto.randomBytes(12)
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv)
-  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()])
-  const tag = cipher.getAuthTag()
-  // Format: iv:tag:ciphertext (all hex)
-  return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`
-}
-
-function decrypt(ciphertext: string): string {
-  if (!ENCRYPTION_KEY) return ciphertext
-  try {
-    const [ivHex, tagHex, dataHex] = ciphertext.split(":")
-    const key       = Buffer.from(ENCRYPTION_KEY, "hex")
-    const iv        = Buffer.from(ivHex,  "hex")
-    const tag       = Buffer.from(tagHex, "hex")
-    const data      = Buffer.from(dataHex,"hex")
-    const decipher  = crypto.createDecipheriv("aes-256-gcm", key, iv)
-    decipher.setAuthTag(tag)
-    return decipher.update(data).toString("utf8") + decipher.final("utf8")
-  } catch {
-    return ciphertext // return as-is if decryption fails
-  }
-}
-
-export { decrypt } // exported so send/route.ts can use it
+import { encrypt } from "@/lib/whatsapp"
 
 // ── GET planner ───────────────────────────────
 

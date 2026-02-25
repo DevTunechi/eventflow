@@ -11,26 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth-server"
-import { sendWhatsAppMessage } from "@/app/api/whatsapp/send/route"
-import crypto from "crypto"
-
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? ""
-
-function decrypt(ciphertext: string): string {
-  if (!ENCRYPTION_KEY || !ciphertext.includes(":")) return ciphertext
-  try {
-    const [ivHex, tagHex, dataHex] = ciphertext.split(":")
-    const key      = Buffer.from(ENCRYPTION_KEY, "hex")
-    const iv       = Buffer.from(ivHex,  "hex")
-    const tag      = Buffer.from(tagHex, "hex")
-    const data     = Buffer.from(dataHex,"hex")
-    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv)
-    decipher.setAuthTag(tag)
-    return decipher.update(data).toString("utf8") + decipher.final("utf8")
-  } catch {
-    return ciphertext
-  }
-}
+import { decrypt, sendWhatsAppMessage } from "@/lib/whatsapp"
 
 export async function POST(
   req: NextRequest,
