@@ -35,7 +35,7 @@ export async function POST(
 
     if (!user.waAccessToken || !user.waPhoneNumberId) {
       return NextResponse.json(
-        { error: "WhatsApp not connected. Go to Settings → WhatsApp to connect your business number first." },
+        { error: "WhatsApp not connected." },
         { status: 400 }
       )
     }
@@ -48,19 +48,24 @@ export async function POST(
 
     const body = await req.json()
     const { guestIds }: { guestIds: string[] } = body
-
     if (!guestIds?.length) return NextResponse.json({ error: "No guest IDs provided" }, { status: 400 })
 
     const guests = await prisma.guest.findMany({
-      where: { id: { in: guestIds }, eventId: id },
+      where:  { id: { in: guestIds }, eventId: id },
       select: { id: true, firstName: true, lastName: true, phone: true, inviteToken: true },
     })
 
     const baseUrl     = process.env.NEXT_PUBLIC_APP_URL ?? "https://eventflowng.vercel.app"
     const accessToken = decrypt(user.waAccessToken)
-    let sent   = 0
-    let failed = 0
+
+    // ── Debug: log decrypted token prefix and phoneNumberId ──
+    console.log("[send-invites] phoneNumberId:", user.waPhoneNumberId)
+    console.log("[send-invites] token prefix:", accessToken.slice(0, 10))
+
+    let sent    = 0
+    let failed  = 0
     let noPhone = 0
+    const errors: string[] = []
 
     for (const guest of guests) {
       if (!guest.phone) { noPhone++; continue }
@@ -96,16 +101,18 @@ export async function POST(
           })
           sent++
         } else {
-          console.error(`Failed to send to ${guest.phone}:`, result.error)
+          console.error(`[send-invites] Failed for ${guest.phone}:`, result.error)
+          errors.push(result.error ?? "unknown")
           failed++
         }
       } catch (e) {
-        console.error(`Exception sending to ${guest.id}:`, e)
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`[send-invites] Exception for ${guest.id}:`, msg)
+        errors.push(msg)
         failed++
       }
     }
 
-    // Increment total messages sent counter
     if (sent > 0) {
       await (prisma.user as any).update({
         where: { id: user.id },
@@ -113,9 +120,12 @@ export async function POST(
       })
     }
 
-    return NextResponse.json({ sent, failed, noPhone })
+    // Return errors array so we can see what Meta said
+    return NextResponse.json({ sent, failed, noPhone, errors })
+
   } catch (error) {
-    console.error("Send invites error:", error)
-    return NextResponse.json({ error: "Failed to send invites" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error("[send-invites] Top-level error:", msg)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
