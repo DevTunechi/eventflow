@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
 import Image from "next/image"
+import Link from "next/link"
 
 const CAROUSEL_IMAGES = [
   "/1.png", "/2.png", "/3.png",
@@ -65,7 +66,7 @@ const SOCIAL_LINKS = [
     href: "https://linkedin.com/company/eventflow",
     icon: (
       <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 23.2 24 22.222 0h.003z"/>
       </svg>
     ),
   },
@@ -160,6 +161,11 @@ export default function LoginPage() {
         © {new Date().getFullYear()} EventFlow &nbsp;·&nbsp;
         Powered by <span>Dev Tunechi</span>
       </p>
+      <div className="lp-footer-legal">
+        <Link href="/privacy" className="lp-footer-legal-link">Privacy Policy</Link>
+        <span className="lp-footer-legal-dot">·</span>
+        <Link href="/data-deletion" className="lp-footer-legal-link">Data Deletion</Link>
+      </div>
     </footer>
   )
 
@@ -202,70 +208,49 @@ export default function LoginPage() {
           opacity: 0.025; pointer-events: none; z-index: 0;
         }
 
-        /* ══════════════════════════════════════════════
-           DESKTOP (≥1024px) — Two-panel split
-        ══════════════════════════════════════════════ */
         .lp-desktop {
           display: none;
           height: 100vh; height: 100dvh;
           position: relative; z-index: 1;
         }
 
-        /* LEFT PANEL */
         .lp-left {
           position: absolute; inset: 0 42% 0 0;
           display: flex; flex-direction: column;
-          overflow: hidden;
-          background: #080808;
+          overflow: hidden; background: #080808;
         }
 
-        /* Carousel block — landscape ratio, not stretched */
         .lp-left-carousel {
-          width: 100%;
-          aspect-ratio: 16 / 9;
-          position: relative;
-          flex-shrink: 0;
-          overflow: hidden;
-          background: #111;
+          width: 100%; aspect-ratio: 16 / 9;
+          position: relative; flex-shrink: 0;
+          overflow: hidden; background: #111;
         }
         .lp-left-carousel-slide {
-          position: absolute; inset: 0;
-          opacity: 0;
+          position: absolute; inset: 0; opacity: 0;
           transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .lp-left-carousel-slide.active {
-          opacity: 1;
-        }
-        /* Subtle bottom fade to blend into brand area */
+        .lp-left-carousel-slide.active { opacity: 1; }
         .lp-left-carousel::after {
           content: ''; position: absolute;
           bottom: 0; left: 0; right: 0; height: 30%;
           background: linear-gradient(to bottom, transparent, #080808);
           z-index: 2; pointer-events: none;
         }
-
-        /* Dots inside carousel bottom */
         .lp-left-carousel .lp-carousel-dots {
-          position: absolute;
-          bottom: 0.75rem; left: 50%;
-          transform: translateX(-50%);
-          z-index: 3;
+          position: absolute; bottom: 0.75rem; left: 50%;
+          transform: translateX(-50%); z-index: 3;
         }
 
-        /* Brand text block below carousel */
         .lp-left-brand {
-          flex: 1;
-          padding: 2rem 2.75rem 2.25rem;
+          flex: 1; padding: 2rem 2.75rem 2.25rem;
           display: flex; flex-direction: column;
-          justify-content: center;
-          background: #080808;
+          justify-content: center; background: #080808;
         }
 
         .lp-left-eyebrow {
           font-size: 0.62rem; font-weight: 500;
           letter-spacing: 0.3em; text-transform: uppercase;
-          color: #b48c3c;
-          margin-bottom: 1rem;
+          color: #b48c3c; margin-bottom: 1rem;
           display: flex; align-items: center; gap: 0.75rem;
         }
         .lp-left-eyebrow::before {
@@ -277,15 +262,12 @@ export default function LoginPage() {
           font-family: 'Cormorant Garamond', serif;
           font-size: clamp(1.9rem, 2.6vw, 3rem);
           font-weight: 300; line-height: 1.1;
-          color: #f0ece4;
-          margin-bottom: 1.5rem;
+          color: #f0ece4; margin-bottom: 1.5rem;
           letter-spacing: -0.01em;
         }
         .lp-left-headline em { font-style: italic; color: #b48c3c; }
 
-        .lp-left-features {
-          display: flex; flex-direction: column; gap: 0.85rem;
-        }
+        .lp-left-features { display: flex; flex-direction: column; gap: 0.85rem; }
         .lp-left-feature {
           display: flex; align-items: flex-start; gap: 0.875rem;
           font-size: 0.82rem; color: rgba(240,236,228,0.55);
@@ -293,15 +275,11 @@ export default function LoginPage() {
         }
         .lp-left-feature-dot {
           width: 5px; height: 5px; border-radius: 50%;
-          background: #b48c3c;
-          margin-top: 0.5rem; flex-shrink: 0;
+          background: #b48c3c; margin-top: 0.5rem; flex-shrink: 0;
           box-shadow: 0 0 6px rgba(180,140,60,0.5);
         }
-        .lp-left-feature strong {
-          color: #e8e0d0; font-weight: 500;
-        }
+        .lp-left-feature strong { color: #e8e0d0; font-weight: 500; }
 
-        /* RIGHT PANEL */
         .lp-right {
           position: absolute; inset: 0 0 0 58%;
           display: flex; flex-direction: column;
@@ -313,9 +291,7 @@ export default function LoginPage() {
 
         .lp-right-top {
           display: flex; flex-direction: column;
-          justify-content: center;
-          flex: 1;
-          max-width: 420px;
+          justify-content: center; flex: 1; max-width: 420px;
         }
 
         .lp-right-logo {
@@ -336,32 +312,26 @@ export default function LoginPage() {
         }
         .lp-card-subtitle {
           font-size: 0.9rem; color: rgba(240,236,228,0.55);
-          font-weight: 300; margin-bottom: 2rem;
-          line-height: 1.6;
+          font-weight: 300; margin-bottom: 2rem; line-height: 1.6;
         }
 
         .lp-divider {
-          display: flex; align-items: center;
-          gap: 1rem; margin-bottom: 1.25rem;
+          display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem;
         }
         .lp-divider-line { flex: 1; height: 1px; background: rgba(180,140,60,0.18); }
         .lp-divider-text {
           font-size: 0.62rem; letter-spacing: 0.18em;
-          text-transform: uppercase; color: rgba(240,236,228,0.3);
-          white-space: nowrap;
+          text-transform: uppercase; color: rgba(240,236,228,0.3); white-space: nowrap;
         }
 
         .lp-google-btn {
           width: 100%; padding: 1rem 1.5rem;
-          background: transparent;
-          border: 1px solid rgba(180,140,60,0.3);
+          background: transparent; border: 1px solid rgba(180,140,60,0.3);
           color: #f0ece4; font-family: 'DM Sans', sans-serif;
-          font-size: 0.95rem; font-weight: 400;
-          letter-spacing: 0.02em; cursor: pointer;
-          display: flex; align-items: center;
+          font-size: 0.95rem; font-weight: 400; letter-spacing: 0.02em;
+          cursor: pointer; display: flex; align-items: center;
           justify-content: center; gap: 0.875rem;
-          transition: all 0.3s ease;
-          position: relative; overflow: hidden;
+          transition: all 0.3s ease; position: relative; overflow: hidden;
           -webkit-tap-highlight-color: transparent;
         }
         .lp-google-btn::before {
@@ -385,43 +355,53 @@ export default function LoginPage() {
         }
         .lp-trust-item {
           display: flex; align-items: center; gap: 0.4rem;
-          font-size: 0.68rem; color: rgba(240,236,228,0.35);
-          letter-spacing: 0.06em;
+          font-size: 0.68rem; color: rgba(240,236,228,0.35); letter-spacing: 0.06em;
         }
         .lp-trust-dot {
           width: 3px; height: 3px; border-radius: 50%;
           background: rgba(180,140,60,0.45); flex-shrink: 0;
         }
 
-        /* FOOTER */
+        /* ── Footer ── */
         .lp-footer {
-          flex-shrink: 0;
-          padding: 1rem 0 0;
-          border-top: 1px solid rgba(180,140,60,0.1);
-          margin-top: 1rem;
+          flex-shrink: 0; padding: 1rem 0 0;
+          border-top: 1px solid rgba(180,140,60,0.1); margin-top: 1rem;
         }
         .lp-social-row {
           display: flex; align-items: center;
           justify-content: center; gap: 1.125rem; margin-bottom: 0.6rem;
         }
         .lp-social-link {
-          color: rgba(240,236,228,0.45);
-          text-decoration: none;
-          transition: color 0.2s ease;
-          display: flex; align-items: center;
+          color: rgba(240,236,228,0.45); text-decoration: none;
+          transition: color 0.2s ease; display: flex; align-items: center;
           -webkit-tap-highlight-color: transparent;
         }
         .lp-social-link:hover { color: #b48c3c; }
         .lp-footer-copy {
           text-align: center; font-size: 0.62rem;
           color: rgba(240,236,228,0.3); letter-spacing: 0.04em;
+          margin-bottom: 0.5rem;
         }
         .lp-footer-copy span { color: rgba(180,140,60,0.6); }
 
-        /* CAROUSEL DOTS — shared */
+        /* Legal links */
+        .lp-footer-legal {
+          display: flex; align-items: center; justify-content: center;
+          gap: 0.5rem; padding-top: 0.25rem;
+        }
+        .lp-footer-legal-link {
+          font-size: 0.6rem; color: rgba(240,236,228,0.25);
+          text-decoration: none; letter-spacing: 0.06em;
+          transition: color 0.2s;
+        }
+        .lp-footer-legal-link:hover { color: #b48c3c; }
+        .lp-footer-legal-dot {
+          font-size: 0.6rem; color: rgba(240,236,228,0.15);
+        }
+
+        /* Dots */
         .lp-carousel-dots {
-          display: flex; justify-content: center;
-          gap: 0.45rem; padding: 0.5rem 0 0.2rem;
+          display: flex; justify-content: center; gap: 0.45rem; padding: 0.5rem 0 0.2rem;
         }
         .lp-dot {
           width: 5px; height: 5px; border-radius: 50%;
@@ -429,16 +409,10 @@ export default function LoginPage() {
           transition: background 0.4s ease, transform 0.4s ease, width 0.4s ease;
           cursor: pointer; border: none; padding: 0;
         }
-        .lp-dot.active {
-          background: #b48c3c;
-          transform: scale(1.4);
-          box-shadow: 0 0 6px rgba(180,140,60,0.6);
-        }
-        /* Light dots for overlay on carousel */
+        .lp-dot.active { background: #b48c3c; transform: scale(1.4); box-shadow: 0 0 6px rgba(180,140,60,0.6); }
         .lp-dot.light { background: rgba(255,255,255,0.35); }
         .lp-dot.light.active { background: #b48c3c; }
 
-        /* ANIMATIONS */
         @keyframes fadeUp {
           from { opacity: 0; transform: translateY(14px); }
           to   { opacity: 1; transform: translateY(0); }
@@ -450,67 +424,47 @@ export default function LoginPage() {
         .anim-5 { animation: fadeUp 0.55s 0.32s ease both; }
         .anim-6 { animation: fadeUp 0.55s 0.40s ease both; }
 
-        /* ══════════════════════════════════════════════
-           MOBILE / TABLET (<1024px)
-        ══════════════════════════════════════════════ */
+        /* ── Mobile ── */
         .lp-mobile {
-          display: flex;
-          flex-direction: column;
+          display: flex; flex-direction: column;
           min-height: 100vh; min-height: 100dvh;
           position: relative; z-index: 1;
         }
-
         .lp-mobile-inner {
-          width: 100%; max-width: 480px;
-          margin: 0 auto;
-          display: flex; flex-direction: column;
-          flex: 1; padding: 0 1.5rem;
+          width: 100%; max-width: 480px; margin: 0 auto;
+          display: flex; flex-direction: column; flex: 1; padding: 0 1.5rem;
         }
-
         .lp-header {
-          display: flex; align-items: center;
-          justify-content: space-between;
-          padding-top: 1.375rem; padding-bottom: 0.875rem;
-          flex-shrink: 0;
+          display: flex; align-items: center; justify-content: space-between;
+          padding-top: 1.375rem; padding-bottom: 0.875rem; flex-shrink: 0;
         }
-
         .lp-logo {
-          display: flex; align-items: center; gap: 0.55rem;
-          text-decoration: none;
+          display: flex; align-items: center; gap: 0.55rem; text-decoration: none;
         }
         .lp-logo-text {
           font-family: 'Bebas Neue', sans-serif;
           font-size: 1.15rem; color: #f0ece4; letter-spacing: 0.12em;
         }
         .lp-logo-text span { color: #b48c3c; }
-
         .lp-eyebrow {
           font-size: 0.6rem; font-weight: 500;
           letter-spacing: 0.2em; text-transform: uppercase;
           color: rgba(180,140,60,0.75);
         }
-
         .lp-hero { flex-shrink: 0; padding-bottom: 1rem; }
-
         .lp-headline {
           font-family: 'Cormorant Garamond', serif;
           font-size: clamp(1.75rem, 5vw, 2.25rem);
           font-weight: 300; line-height: 1.1;
-          color: #f0ece4; margin-bottom: 0.45rem;
-          letter-spacing: -0.01em;
+          color: #f0ece4; margin-bottom: 0.45rem; letter-spacing: -0.01em;
         }
         .lp-headline em { font-style: italic; color: #b48c3c; }
-
         .lp-subtext {
           font-size: 0.82rem; font-weight: 300;
           color: rgba(240,236,228,0.55); line-height: 1.55;
         }
-
-        /* Mobile carousel — bleeds edge to edge */
         .lp-mobile-carousel {
-          flex-shrink: 0;
-          margin-left: -1.5rem; margin-right: -1.5rem;
-          position: relative;
+          flex-shrink: 0; margin-left: -1.5rem; margin-right: -1.5rem; position: relative;
         }
         .lp-mobile-carousel-track {
           width: 100%; aspect-ratio: 16 / 9;
@@ -523,38 +477,24 @@ export default function LoginPage() {
           z-index: 2; pointer-events: none;
         }
         .lp-mobile-carousel-slide {
-          position: absolute; inset: 0;
-          opacity: 0;
+          position: absolute; inset: 0; opacity: 0;
           transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .lp-mobile-carousel-slide.active { opacity: 1; }
-
-        /* Mobile login section */
         .lp-login {
           flex: 1; display: flex; flex-direction: column;
           justify-content: center; padding-top: 0.875rem; min-height: 0;
         }
-
-        .lp-mobile .lp-card-title {
-          font-size: 1.75rem;
-          color: #f0ece4;
-        }
+        .lp-mobile .lp-card-title { font-size: 1.75rem; color: #f0ece4; }
         .lp-mobile .lp-card-subtitle {
-          font-size: 0.82rem;
-          color: rgba(240,236,228,0.55);
-          margin-bottom: 1.25rem;
+          font-size: 0.82rem; color: rgba(240,236,228,0.55); margin-bottom: 1.25rem;
         }
-        .lp-mobile .lp-google-btn {
-          font-size: 0.88rem;
-          padding: 0.875rem 1.25rem;
-        }
+        .lp-mobile .lp-google-btn { font-size: 0.88rem; padding: 0.875rem 1.25rem; }
 
         @media (min-width: 1024px) {
           .lp-desktop { display: block; }
           .lp-mobile  { display: none; }
         }
-
-        /* Short screens on mobile */
         @media (max-height: 680px) and (max-width: 1023px) {
           .lp-subtext { display: none; }
           .lp-mobile .lp-card-subtitle { margin-bottom: 0.75rem; }
@@ -567,37 +507,20 @@ export default function LoginPage() {
 
       <div className="lp-root">
 
-        {/* ══════════════════════════════════════════════
-            DESKTOP — Two-panel split
-        ══════════════════════════════════════════════ */}
+        {/* ── DESKTOP ── */}
         <div className="lp-desktop">
-
-          {/* LEFT — carousel (landscape) + brand text below */}
           <div className="lp-left">
-
-            {/* Carousel in true landscape ratio */}
             <div className="lp-left-carousel">
               {CAROUSEL_IMAGES.map((src, i) => (
-                <div
-                  key={src}
-                  className={`lp-left-carousel-slide${i === activeSlide && !transitioning ? " active" : ""}`}
-                >
-                  <Image
-                    src={src} alt={`Event venue ${i + 1}`}
-                    fill style={{ objectFit: "cover" }}
-                    priority={i === 0} sizes="58vw"
-                  />
+                <div key={src} className={`lp-left-carousel-slide${i === activeSlide && !transitioning ? " active" : ""}`}>
+                  <Image src={src} alt={`Event venue ${i + 1}`} fill style={{ objectFit: "cover" }} priority={i === 0} sizes="58vw" />
                 </div>
               ))}
               {dotsJSX(true)}
             </div>
-
-            {/* Brand text below the carousel */}
             <div className="lp-left-brand anim-1">
               <div className="lp-left-eyebrow">The Command Center</div>
-              <h1 className="lp-left-headline">
-                Every great event<br />begins with <em>precision.</em>
-              </h1>
+              <h1 className="lp-left-headline">Every great event<br />begins with <em>precision.</em></h1>
               <div className="lp-left-features">
                 {FEATURES.map(f => (
                   <div className="lp-left-feature" key={f.label}>
@@ -609,34 +532,21 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* RIGHT — login */}
           <div className="lp-right">
             <div className="lp-right-top">
-
               <a href="/" className="lp-right-logo anim-1" aria-label="EventFlow home">
-                <Image
-                  src="/eflogo.png" alt="EventFlow"
-                  width={36} height={36} priority
-                  style={{ objectFit: "contain" }}
-                />
-                <span className="lp-right-logo-text">
-                  Event<span>Flow</span>
-                </span>
+                <Image src="/eflogo.png" alt="EventFlow" width={36} height={36} priority style={{ objectFit: "contain" }} />
+                <span className="lp-right-logo-text">Event<span>Flow</span></span>
               </a>
-
               <div className="anim-2">
                 <h2 className="lp-card-title">Planner Login</h2>
-                <p className="lp-card-subtitle">
-                  Sign in to access your command center and manage your events.
-                </p>
+                <p className="lp-card-subtitle">Sign in to access your command center and manage your events.</p>
               </div>
-
               <div className="lp-divider anim-3">
                 <div className="lp-divider-line" />
                 <span className="lp-divider-text">Continue with</span>
                 <div className="lp-divider-line" />
               </div>
-
               <div className="anim-4">
                 {googleBtn}
                 <div className="lp-trust">
@@ -645,54 +555,32 @@ export default function LoginPage() {
                   <div className="lp-trust-item"><div className="lp-trust-dot" />Free to start</div>
                 </div>
               </div>
-
             </div>
-
             <div className="anim-5">{footerJSX}</div>
           </div>
         </div>
 
-        {/* ══════════════════════════════════════════════
-            MOBILE / TABLET — Single column
-        ══════════════════════════════════════════════ */}
+        {/* ── MOBILE ── */}
         <div className="lp-mobile">
           <div className="lp-mobile-inner">
-
             <header className="lp-header anim-1">
               <a href="/" className="lp-logo" aria-label="EventFlow home">
-                <Image
-                  src="/eflogo.png" alt="EventFlow"
-                  width={28} height={28} priority
-                  style={{ objectFit: "contain" }}
-                />
-                <span className="lp-logo-text">
-                  Event<span>Flow</span>
-                </span>
+                <Image src="/eflogo.png" alt="EventFlow" width={28} height={28} priority style={{ objectFit: "contain" }} />
+                <span className="lp-logo-text">Event<span>Flow</span></span>
               </a>
               <span className="lp-eyebrow">The Command Center</span>
             </header>
 
             <div className="lp-hero anim-2">
-              <h1 className="lp-headline">
-                Every great event<br />begins with <em>precision.</em>
-              </h1>
-              <p className="lp-subtext">
-                The complete operations platform for Nigerian event planners.
-              </p>
+              <h1 className="lp-headline">Every great event<br />begins with <em>precision.</em></h1>
+              <p className="lp-subtext">The complete operations platform for Nigerian event planners.</p>
             </div>
 
             <div className="lp-mobile-carousel anim-3">
               <div className="lp-mobile-carousel-track">
                 {CAROUSEL_IMAGES.map((src, i) => (
-                  <div
-                    key={src}
-                    className={`lp-mobile-carousel-slide${i === activeSlide && !transitioning ? " active" : ""}`}
-                  >
-                    <Image
-                      src={src} alt={`Event venue ${i + 1}`}
-                      fill style={{ objectFit: "cover" }}
-                      priority={i === 0} sizes="100vw"
-                    />
+                  <div key={src} className={`lp-mobile-carousel-slide${i === activeSlide && !transitioning ? " active" : ""}`}>
+                    <Image src={src} alt={`Event venue ${i + 1}`} fill style={{ objectFit: "cover" }} priority={i === 0} sizes="100vw" />
                   </div>
                 ))}
               </div>
@@ -701,9 +589,7 @@ export default function LoginPage() {
 
             <div className="lp-login anim-4">
               <h2 className="lp-card-title">Planner Login</h2>
-              <p className="lp-card-subtitle">
-                Sign in to access your command center.
-              </p>
+              <p className="lp-card-subtitle">Sign in to access your command center.</p>
               <div className="lp-divider">
                 <div className="lp-divider-line" />
                 <span className="lp-divider-text">Continue with</span>
@@ -718,7 +604,6 @@ export default function LoginPage() {
             </div>
 
             <div className="anim-5">{footerJSX}</div>
-
           </div>
         </div>
 
