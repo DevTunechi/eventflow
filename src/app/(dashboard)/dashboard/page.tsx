@@ -607,7 +607,7 @@ export default function OverviewPage() {
           <div className="ov-section">
             <div className="ov-section-header">
               <span className="ov-section-title">Recent RSVPs</span>
-              <Link href="/guests" className="ov-section-link">View all →</Link>
+              <Link href="/events" className="ov-section-link">View all →</Link>
             </div>
 
             {loading

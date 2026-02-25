@@ -60,7 +60,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: "/guests",
+    href: "/events",
     label: "Guests",
     icon: (
       // People icon
