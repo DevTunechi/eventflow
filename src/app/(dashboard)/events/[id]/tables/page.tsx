@@ -1,8 +1,7 @@
 "use client"
 
-// ─────────────────────────────────────────────
 // src/app/(dashboard)/events/[id]/tables/page.tsx
-// ─────────────────────────────────────────────
+// Added: capacity warnings when tables exceed totalTables or seats exceed venueCapacity
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
@@ -11,24 +10,18 @@ import Link from "next/link"
 interface GuestTier { id: string; name: string; color: string | null }
 
 interface Table {
-  id:                 string
-  tableNumber:        number
-  label:             string | null
-  capacity:          number
-  currentOccupancy:  number
-  reservedForTierId: string | null
-  reservedForTier:   GuestTier | null
-  isReleased:        boolean
-  releasedAt:        string | null
-  createdAt:         string
+  id: string; tableNumber: number; label: string | null
+  capacity: number; currentOccupancy: number
+  reservedForTierId: string | null; reservedForTier: GuestTier | null
+  isReleased: boolean; releasedAt: string | null; createdAt: string
 }
 
 interface EventDetail {
-  id:           string
-  name:         string
-  totalTables:  number | null
+  id: string; name: string
+  totalTables:   number | null
   seatsPerTable: number | null
-  guestTiers:   GuestTier[]
+  venueCapacity: number | null
+  guestTiers:    GuestTier[]
 }
 
 const getAuthHeaders = (): Record<string, string> => {
@@ -58,8 +51,7 @@ export default function TablesPage() {
   })
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     try {
       const hdrs = getAuthHeaders()
       const [evRes, tRes] = await Promise.all([
@@ -67,32 +59,33 @@ export default function TablesPage() {
         fetch(`/api/events/${id}/tables`, { headers: hdrs }),
       ])
       if (!evRes.ok) throw new Error("Failed to load event")
-      const evData = await evRes.json()
-      const ev = evData.event
+      const { event: ev } = await evRes.json()
       setEvent({
-        id:           ev.id,
-        name:         ev.name,
-        totalTables:  ev.totalTables,
-        seatsPerTable: ev.seatsPerTable,
-        guestTiers:   ev.guestTiers ?? [],
+        id:            ev.id,
+        name:          ev.name,
+        totalTables:   ev.totalTables   ?? null,
+        seatsPerTable: ev.seatsPerTable ?? null,
+        venueCapacity: ev.venueCapacity ?? null,
+        guestTiers:    ev.guestTiers    ?? [],
       })
-      if (tRes.ok) {
-        const tData = await tRes.json()
-        setTables(Array.isArray(tData) ? tData : [])
-      }
+      if (tRes.ok) { const d = await tRes.json(); setTables(Array.isArray(d) ? d : []) }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load")
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }, [id])
 
   useEffect(() => { load() }, [load])
 
   const handleAdd = async () => {
     if (!form.tableNumber.trim()) { setSaveError("Table number is required."); return }
-    setSaving(true)
-    setSaveError("")
+
+    // Warn if exceeding totalTables
+    if (event?.totalTables !== null && event?.totalTables !== undefined && tables.length >= event.totalTables) {
+      const ok = confirm(`You already have ${tables.length} table${tables.length > 1 ? "s" : ""} — your event is configured for ${event.totalTables} max. Add anyway?`)
+      if (!ok) return
+    }
+
+    setSaving(true); setSaveError("")
     try {
       const res = await fetch(`/api/events/${id}/tables`, {
         method:  "POST",
@@ -107,21 +100,28 @@ export default function TablesPage() {
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed") }
       const { table } = await res.json()
       setTables(prev => [...prev, table].sort((a, b) => a.tableNumber - b.tableNumber))
-      setForm({ tableNumber: "", label: "", capacity: "10", reservedForTierId: "" })
+      setForm({ tableNumber:"", label:"", capacity:"10", reservedForTierId:"" })
       setShowForm(false)
-    } catch (e: unknown) {
-      setSaveError(e instanceof Error ? e.message : "Failed to add table")
-    } finally {
-      setSaving(false)
-    }
+    } catch (e: unknown) { setSaveError(e instanceof Error ? e.message : "Failed to add table") }
+    finally { setSaving(false) }
   }
 
   const handleBulkCreate = async () => {
     const count = parseInt(bulkCount)
     const seats = parseInt(bulkSeats) || 10
     if (!count || count < 1 || count > 100) { setSaveError("Enter a number between 1 and 100."); return }
-    setBulkSaving(true)
-    setSaveError("")
+
+    // Warn if bulk would exceed totalTables
+    if (event?.totalTables !== null && event?.totalTables !== undefined) {
+      const after = tables.length + count
+      if (after > event.totalTables) {
+        const over = after - event.totalTables
+        const ok = confirm(`Adding ${count} tables puts you ${over} over your configured max of ${event.totalTables}. Continue anyway?`)
+        if (!ok) return
+      }
+    }
+
+    setBulkSaving(true); setSaveError("")
     try {
       const res = await fetch(`/api/events/${id}/tables/bulk`, {
         method:  "POST",
@@ -129,109 +129,110 @@ export default function TablesPage() {
         body:    JSON.stringify({ count, seatsPerTable: seats }),
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed") }
-      setBulkCount("")
-      setBulkSeats("")
-      setBulkMode(false)
+      setBulkCount(""); setBulkSeats(""); setBulkMode(false)
       await load()
-    } catch (e: unknown) {
-      setSaveError(e instanceof Error ? e.message : "Failed to create tables")
-    } finally {
-      setBulkSaving(false)
-    }
+    } catch (e: unknown) { setSaveError(e instanceof Error ? e.message : "Failed to create tables") }
+    finally { setBulkSaving(false) }
   }
 
   const handleDelete = async (tableId: string, label: string) => {
     if (!confirm(`Remove ${label}?`)) return
     setDeletingId(tableId)
     try {
-      await fetch(`/api/events/${id}/tables/${tableId}`, { method: "DELETE", headers: getAuthHeaders() })
+      await fetch(`/api/events/${id}/tables/${tableId}`, { method:"DELETE", headers:getAuthHeaders() })
       setTables(prev => prev.filter(t => t.id !== tableId))
-    } finally {
-      setDeletingId(null)
-    }
+    } finally { setDeletingId(null) }
   }
 
-  const totalSeats   = tables.reduce((s, t) => s + t.capacity, 0)
+  const totalSeats    = tables.reduce((s, t) => s + t.capacity, 0)
   const totalOccupied = tables.reduce((s, t) => s + t.currentOccupancy, 0)
-  const fullTables   = tables.filter(t => t.currentOccupancy >= t.capacity).length
+  const fullTables    = tables.filter(t => t.currentOccupancy >= t.capacity).length
+
+  // Capacity alert state
+  const isOverTableLimit  = event?.totalTables !== null && event?.totalTables !== undefined && tables.length > event.totalTables
+  const isAtTableLimit    = event?.totalTables !== null && event?.totalTables !== undefined && tables.length === event.totalTables
+  const isOverVenueCap    = event?.venueCapacity !== null && event?.venueCapacity !== undefined && totalSeats > event.venueCapacity
+
+  const nextTableNumber = tables.length > 0 ? Math.max(...tables.map(t => t.tableNumber)) + 1 : 1
 
   if (loading) return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", gap: "0.75rem" }}>
-      <div style={{ width: 22, height: 22, border: "1.5px solid rgba(180,140,60,0.2)", borderTopColor: "#b48c3c", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"60vh", gap:"0.75rem" }}>
+      <div style={{ width:22, height:22, border:"1.5px solid rgba(180,140,60,0.2)", borderTopColor:"#b48c3c", borderRadius:"50%", animation:"spin 0.7s linear infinite" }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 
   if (error || !event) return (
-    <div style={{ padding: "3rem", textAlign: "center" }}>
-      <p style={{ color: "var(--text-2)", marginBottom: "1rem" }}>{error ?? "Event not found"}</p>
-      <Link href="/events" style={{ color: "var(--gold)", textDecoration: "none" }}>← Back to events</Link>
+    <div style={{ padding:"3rem", textAlign:"center" }}>
+      <p style={{ color:"var(--text-2)", marginBottom:"1rem" }}>{error ?? "Event not found"}</p>
+      <Link href="/events" style={{ color:"var(--gold)", textDecoration:"none" }}>← Back to events</Link>
     </div>
   )
 
   return (
     <>
       <style>{`
-        .tp { max-width:1000px; margin:0 auto; padding:0 0 4rem; animation:tpIn 0.3s ease; }
-        @keyframes tpIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
-        .tp-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:2rem; flex-wrap:wrap; gap:0.75rem; }
-        .tp-back { font-size:0.78rem; color:var(--text-3); text-decoration:none; display:flex; align-items:center; gap:0.35rem; transition:color 0.2s; }
-        .tp-back:hover { color:var(--gold); }
-        .tp-top-right { display:flex; gap:0.5rem; }
-        .tp-title { font-family:'Cormorant Garamond',serif; font-size:clamp(1.5rem,3vw,2.25rem); font-weight:300; color:var(--text); letter-spacing:-0.01em; margin-bottom:0.25rem; }
-        .tp-sub { font-size:0.78rem; color:var(--text-3); margin-bottom:1.75rem; }
-
-        .tp-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:0.625rem; margin-bottom:1.75rem; }
-        @media(max-width:640px) { .tp-stats { grid-template-columns:repeat(2,1fr); } }
-        .tp-stat { background:var(--bg-2); border:1px solid var(--border); padding:0.875rem; text-align:center; }
-        .tp-stat-num { font-family:'Cormorant Garamond',serif; font-size:1.75rem; font-weight:300; color:var(--gold); line-height:1; margin-bottom:0.2rem; }
-        .tp-stat-label { font-size:0.58rem; color:var(--text-3); letter-spacing:0.1em; text-transform:uppercase; }
-
-        .tp-btn { padding:0.5rem 1rem; font-family:'DM Sans',sans-serif; font-size:0.775rem; cursor:pointer; border:none; transition:all 0.2s; display:inline-flex; align-items:center; gap:0.4rem; border-radius:5px; }
-        .tp-btn-gold  { background:var(--gold); color:#0a0a0a; font-weight:500; }
-        .tp-btn-gold:hover:not(:disabled) { background:#c9a050; }
-        .tp-btn-gold:disabled { opacity:0.45; cursor:not-allowed; }
-        .tp-btn-ghost { background:transparent; border:1px solid var(--border); color:var(--text-2); }
-        .tp-btn-ghost:hover { border-color:var(--border-hover); color:var(--text); }
-        .tp-btn-danger { background:transparent; border:1px solid rgba(239,68,68,0.2); color:rgba(239,68,68,0.6); font-size:0.7rem; padding:0.3rem 0.65rem; }
-        .tp-btn-danger:hover:not(:disabled) { border-color:#ef4444; color:#ef4444; }
-        .tp-btn-danger:disabled { opacity:0.3; cursor:not-allowed; }
-
-        .tp-form-card { background:var(--bg-2); border:1px solid var(--border); padding:1.5rem; margin-bottom:1.75rem; max-width:560px; }
-        .tp-form-title { font-size:0.6rem; font-weight:500; letter-spacing:0.2em; text-transform:uppercase; color:var(--gold); margin-bottom:1.25rem; }
-        .tp-field { margin-bottom:1.125rem; }
-        .tp-label { display:block; font-size:0.72rem; font-weight:500; color:var(--text-2); letter-spacing:0.03em; margin-bottom:0.4rem; }
-        .tp-req { color:var(--gold); margin-left:2px; }
-        .tp-input, .tp-sel { width:100%; padding:0.6rem 0.875rem; background:var(--bg-3); border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.825rem; outline:none; box-sizing:border-box; transition:border-color 0.15s; }
-        .tp-input:focus, .tp-sel:focus { border-color:var(--gold); }
-        .tp-sel option { background:var(--bg-2); }
-        .tp-row3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.875rem; }
-        .tp-row2 { display:grid; grid-template-columns:1fr 1fr; gap:0.875rem; }
-        @media(max-width:480px) { .tp-row3,.tp-row2 { grid-template-columns:1fr; } }
-        .tp-form-error { font-size:0.75rem; color:#ef4444; margin-top:0.75rem; padding:0.6rem 0.875rem; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:4px; }
-        .tp-form-actions { display:flex; gap:0.625rem; margin-top:1.25rem; }
-        .tp-hint { font-size:0.68rem; color:var(--text-3); margin-top:0.3rem; }
-
-        .tp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:0.75rem; }
-        .tp-card { background:var(--bg-2); border:1px solid var(--border); padding:1rem; position:relative; transition:border-color 0.2s; }
-        .tp-card:hover { border-color:rgba(180,140,60,0.25); }
-        .tp-card.full { border-color:rgba(239,68,68,0.3); }
-        .tp-card-num { font-family:'Cormorant Garamond',serif; font-size:2rem; font-weight:300; color:var(--gold); line-height:1; margin-bottom:0.25rem; }
-        .tp-card-label { font-size:0.7rem; font-weight:500; color:var(--text-2); margin-bottom:0.625rem; }
-        .tp-card-bar-wrap { height:4px; background:var(--bg-3); border-radius:2px; margin-bottom:0.625rem; overflow:hidden; }
-        .tp-card-bar-fill { height:100%; border-radius:2px; transition:width 0.3s; }
-        .tp-card-seats { font-size:0.7rem; color:var(--text-3); margin-bottom:0.75rem; }
-        .tp-card-tier { font-size:0.6rem; font-weight:500; letter-spacing:0.08em; text-transform:uppercase; padding:0.2rem 0.5rem; border-radius:99px; border:1px solid; display:inline-block; margin-bottom:0.75rem; }
-        .tp-card-actions { display:flex; justify-content:flex-end; }
-
-        .tp-empty { padding:4rem 2rem; text-align:center; border:1px solid var(--border); background:var(--bg-2); }
-        .tp-empty-icon { font-size:2.5rem; margin-bottom:1rem; opacity:0.4; }
-        .tp-empty-title { font-size:0.925rem; color:var(--text-2); margin-bottom:0.5rem; }
-        .tp-empty-sub { font-size:0.78rem; color:var(--text-3); line-height:1.65; }
-
-        .tp-mode-tabs { display:flex; gap:0.5rem; margin-bottom:1.25rem; }
-        .tp-mtab { padding:0.45rem 1rem; font-family:'DM Sans',sans-serif; font-size:0.75rem; cursor:pointer; border-radius:5px; border:1px solid var(--border); color:var(--text-3); background:transparent; transition:all 0.2s; }
-        .tp-mtab.on { background:rgba(180,140,60,0.08); border-color:rgba(180,140,60,0.35); color:var(--gold); }
+        .tp{max-width:1000px;margin:0 auto;padding:0 0 4rem;animation:tpIn 0.3s ease}
+        @keyframes tpIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+        .tp-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;flex-wrap:wrap;gap:.75rem}
+        .tp-back{font-size:.78rem;color:var(--text-3);text-decoration:none;display:flex;align-items:center;gap:.35rem;transition:color .2s}
+        .tp-back:hover{color:var(--gold)}
+        .tp-top-right{display:flex;gap:.5rem}
+        .tp-title{font-family:'Cormorant Garamond',serif;font-size:clamp(1.5rem,3vw,2.25rem);font-weight:300;color:var(--text);letter-spacing:-.01em;margin-bottom:.25rem}
+        .tp-sub{font-size:.78rem;color:var(--text-3);margin-bottom:1.75rem}
+        .tp-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.625rem;margin-bottom:.875rem}
+        @media(max-width:640px){.tp-stats{grid-template-columns:repeat(2,1fr)}}
+        .tp-stat{background:var(--bg-2);border:1px solid var(--border);padding:.875rem;text-align:center}
+        .tp-stat-num{font-family:'Cormorant Garamond',serif;font-size:1.75rem;font-weight:300;color:var(--gold);line-height:1;margin-bottom:.2rem}
+        .tp-stat-label{font-size:.58rem;color:var(--text-3);letter-spacing:.1em;text-transform:uppercase}
+        .tp-btn{padding:.5rem 1rem;font-family:'DM Sans',sans-serif;font-size:.775rem;cursor:pointer;border:none;transition:all .2s;display:inline-flex;align-items:center;gap:.4rem;border-radius:5px}
+        .tp-btn-gold{background:var(--gold);color:#0a0a0a;font-weight:500}
+        .tp-btn-gold:hover:not(:disabled){background:#c9a050}
+        .tp-btn-gold:disabled{opacity:.45;cursor:not-allowed}
+        .tp-btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text-2)}
+        .tp-btn-ghost:hover{border-color:var(--border-hover);color:var(--text)}
+        .tp-btn-danger{background:transparent;border:1px solid rgba(239,68,68,.2);color:rgba(239,68,68,.6);font-size:.7rem;padding:.3rem .65rem}
+        .tp-btn-danger:hover:not(:disabled){border-color:#ef4444;color:#ef4444}
+        .tp-btn-danger:disabled{opacity:.3;cursor:not-allowed}
+        .tp-alert{padding:.875rem 1rem;border-radius:5px;font-size:.8rem;line-height:1.55;margin-bottom:1rem}
+        .tp-alert a{font-weight:500;text-decoration:underline}
+        .tp-alert-err{background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25);color:#ef4444}
+        .tp-alert-err a{color:#ef4444}
+        .tp-alert-warn{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);color:#f59e0b}
+        .tp-alert-warn a{color:#f59e0b}
+        .tp-alert-ok{background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);color:#22c55e}
+        .tp-form-card{background:var(--bg-2);border:1px solid var(--border);padding:1.5rem;margin-bottom:1.75rem;max-width:560px}
+        .tp-form-title{font-size:.6rem;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:1.25rem}
+        .tp-field{margin-bottom:1.125rem}
+        .tp-label{display:block;font-size:.72rem;font-weight:500;color:var(--text-2);letter-spacing:.03em;margin-bottom:.4rem}
+        .tp-req{color:var(--gold);margin-left:2px}
+        .tp-input,.tp-sel{width:100%;padding:.6rem .875rem;background:var(--bg-3);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.825rem;outline:none;box-sizing:border-box;transition:border-color .15s}
+        .tp-input:focus,.tp-sel:focus{border-color:var(--gold)}
+        .tp-sel option{background:var(--bg-2)}
+        .tp-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.875rem}
+        .tp-row2{display:grid;grid-template-columns:1fr 1fr;gap:.875rem}
+        @media(max-width:480px){.tp-row3,.tp-row2{grid-template-columns:1fr}}
+        .tp-form-error{font-size:.75rem;color:#ef4444;margin-top:.75rem;padding:.6rem .875rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:4px}
+        .tp-form-actions{display:flex;gap:.625rem;margin-top:1.25rem}
+        .tp-hint{font-size:.68rem;color:var(--text-3);margin-top:.3rem}
+        .tp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:.75rem}
+        .tp-card{background:var(--bg-2);border:1px solid var(--border);padding:1rem;position:relative;transition:border-color .2s;border-radius:5px}
+        .tp-card:hover{border-color:rgba(180,140,60,.25)}
+        .tp-card.full{border-color:rgba(239,68,68,.3)}
+        .tp-card-num{font-family:'Cormorant Garamond',serif;font-size:2rem;font-weight:300;color:var(--gold);line-height:1;margin-bottom:.25rem}
+        .tp-card-label{font-size:.7rem;font-weight:500;color:var(--text-2);margin-bottom:.625rem}
+        .tp-card-bar-wrap{height:4px;background:var(--bg-3);border-radius:2px;margin-bottom:.625rem;overflow:hidden}
+        .tp-card-bar-fill{height:100%;border-radius:2px;transition:width .3s}
+        .tp-card-seats{font-size:.7rem;color:var(--text-3);margin-bottom:.75rem}
+        .tp-card-tier{font-size:.6rem;font-weight:500;letter-spacing:.08em;text-transform:uppercase;padding:.2rem .5rem;border-radius:99px;border:1px solid;display:inline-block;margin-bottom:.75rem}
+        .tp-card-actions{display:flex;justify-content:flex-end}
+        .tp-empty{padding:4rem 2rem;text-align:center;border:1px solid var(--border);background:var(--bg-2)}
+        .tp-empty-icon{font-size:2.5rem;margin-bottom:1rem;opacity:.4}
+        .tp-empty-title{font-size:.925rem;color:var(--text-2);margin-bottom:.5rem}
+        .tp-empty-sub{font-size:.78rem;color:var(--text-3);line-height:1.65}
+        .tp-mode-tabs{display:flex;gap:.5rem;margin-bottom:1.25rem}
+        .tp-mtab{padding:.45rem 1rem;font-family:'DM Sans',sans-serif;font-size:.75rem;cursor:pointer;border-radius:5px;border:1px solid var(--border);color:var(--text-3);background:transparent;transition:all .2s}
+        .tp-mtab.on{background:rgba(180,140,60,.08);border-color:rgba(180,140,60,.35);color:var(--gold)}
       `}</style>
 
       <div className="tp">
@@ -239,7 +240,7 @@ export default function TablesPage() {
           <Link href={`/events/${id}`} className="tp-back">← {event.name}</Link>
           <div className="tp-top-right">
             <button className="tp-btn tp-btn-ghost" onClick={() => { setBulkMode(true); setShowForm(false) }}>Bulk Create</button>
-            <button className="tp-btn tp-btn-gold" onClick={() => { setShowForm(v => !v); setBulkMode(false) }}>
+            <button className="tp-btn tp-btn-gold"  onClick={() => { setShowForm(v => !v); setBulkMode(false) }}>
               {showForm ? "Cancel" : "+ Add Table"}
             </button>
           </div>
@@ -248,15 +249,35 @@ export default function TablesPage() {
         <h1 className="tp-title">Tables</h1>
         <p className="tp-sub">{event.name}</p>
 
+        {/* Stats */}
         {tables.length > 0 && (
           <div className="tp-stats">
-            <div className="tp-stat"><div className="tp-stat-num">{tables.length}</div><div className="tp-stat-label">Tables</div></div>
+            <div className="tp-stat"><div className="tp-stat-num">{tables.length}{event.totalTables ? `/${event.totalTables}` : ""}</div><div className="tp-stat-label">Tables</div></div>
             <div className="tp-stat"><div className="tp-stat-num">{totalSeats}</div><div className="tp-stat-label">Total Seats</div></div>
             <div className="tp-stat"><div className="tp-stat-num">{totalOccupied}</div><div className="tp-stat-label">Occupied</div></div>
             <div className="tp-stat"><div className="tp-stat-num">{fullTables}</div><div className="tp-stat-label">Full</div></div>
           </div>
         )}
 
+        {/* ── Capacity alerts ── */}
+        {tables.length > 0 && isOverTableLimit && (
+          <div className="tp-alert tp-alert-err">
+            ⚠ You have <strong>{tables.length} tables</strong> but your event is configured for <strong>{event.totalTables}</strong> max.
+            {" "}<Link href={`/events/${id}/edit`} className="">Update in settings</Link> or remove {tables.length - event.totalTables!} table{tables.length - event.totalTables! > 1 ? "s" : ""}.
+          </div>
+        )}
+        {tables.length > 0 && isAtTableLimit && !isOverVenueCap && (
+          <div className="tp-alert tp-alert-ok">
+            ✓ All {event.totalTables} tables configured · {totalSeats} total seats.
+          </div>
+        )}
+        {tables.length > 0 && isOverVenueCap && (
+          <div className="tp-alert tp-alert-warn">
+            ⚠ Total seats ({totalSeats}) exceeds venue capacity ({event.venueCapacity}). Consider reducing table sizes or removing tables.
+          </div>
+        )}
+
+        {/* Bulk form */}
         {bulkMode && (
           <div className="tp-form-card">
             <div className="tp-form-title">Bulk Create Tables</div>
@@ -267,13 +288,19 @@ export default function TablesPage() {
               </div>
               <div className="tp-field">
                 <label className="tp-label">Seats Per Table</label>
-                <input type="number" className="tp-input" placeholder="10" min="1" value={bulkSeats} onChange={e => setBulkSeats(e.target.value)} />
-                <span className="tp-hint">Defaults to 10 if left blank</span>
+                <input type="number" className="tp-input" placeholder={event.seatsPerTable ? String(event.seatsPerTable) : "10"} min="1" value={bulkSeats} onChange={e => setBulkSeats(e.target.value)} />
+                <span className="tp-hint">Defaults to {event.seatsPerTable ?? 10} if blank</span>
               </div>
             </div>
-            <p style={{ fontSize: "0.75rem", color: "var(--text-3)", lineHeight: 1.6, marginBottom: "1rem" }}>
-              Tables will be numbered starting from {(tables.length > 0 ? Math.max(...tables.map(t => t.tableNumber)) + 1 : 1)}. You can rename them individually after.
-            </p>
+            {event.totalTables !== null && (
+              <p style={{ fontSize:".75rem", color:"var(--text-3)", lineHeight:1.6, marginBottom:"1rem" }}>
+                Tables will be numbered from {nextTableNumber}.
+                {tables.length > 0
+                  ? ` You have ${tables.length}/${event.totalTables} tables. This will add ${bulkCount || "?"} more.`
+                  : ` Event configured for ${event.totalTables} tables total.`
+                }
+              </p>
+            )}
             {saveError && <div className="tp-form-error">{saveError}</div>}
             <div className="tp-form-actions">
               <button className="tp-btn tp-btn-gold" onClick={handleBulkCreate} disabled={bulkSaving}>{bulkSaving ? "Creating…" : `Create ${bulkCount || "?"} Tables`}</button>
@@ -282,27 +309,28 @@ export default function TablesPage() {
           </div>
         )}
 
+        {/* Single add form */}
         {showForm && (
           <div className="tp-form-card">
             <div className="tp-form-title">Add Table</div>
             <div className="tp-row3">
               <div className="tp-field">
                 <label className="tp-label">Table Number <span className="tp-req">*</span></label>
-                <input type="number" className="tp-input" placeholder="e.g. 1" min="1" value={form.tableNumber} onChange={e => setForm(p => ({ ...p, tableNumber: e.target.value }))} />
+                <input type="number" className="tp-input" placeholder={String(nextTableNumber)} min="1" value={form.tableNumber} onChange={e => setForm(p => ({...p,tableNumber:e.target.value}))} />
               </div>
               <div className="tp-field">
                 <label className="tp-label">Label</label>
-                <input className="tp-input" placeholder="e.g. VIP-1" value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} />
+                <input className="tp-input" placeholder="e.g. VIP-1" value={form.label} onChange={e => setForm(p => ({...p,label:e.target.value}))} />
               </div>
               <div className="tp-field">
                 <label className="tp-label">Capacity</label>
-                <input type="number" className="tp-input" placeholder="10" min="1" value={form.capacity} onChange={e => setForm(p => ({ ...p, capacity: e.target.value }))} />
+                <input type="number" className="tp-input" placeholder={event.seatsPerTable ? String(event.seatsPerTable) : "10"} min="1" value={form.capacity} onChange={e => setForm(p => ({...p,capacity:e.target.value}))} />
               </div>
             </div>
             {event.guestTiers.length > 0 && (
               <div className="tp-field">
                 <label className="tp-label">Reserve for Tier</label>
-                <select className="tp-sel" value={form.reservedForTierId} onChange={e => setForm(p => ({ ...p, reservedForTierId: e.target.value }))}>
+                <select className="tp-sel" value={form.reservedForTierId} onChange={e => setForm(p => ({...p,reservedForTierId:e.target.value}))}>
                   <option value="">General pool (dynamic)</option>
                   {event.guestTiers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
@@ -317,35 +345,32 @@ export default function TablesPage() {
           </div>
         )}
 
+        {/* Table grid */}
         {tables.length === 0 ? (
           <div className="tp-empty">
             <div className="tp-empty-icon">🪑</div>
             <div className="tp-empty-title">No tables configured yet</div>
-            <div className="tp-empty-sub">Use Bulk Create to set up all your tables at once, or add them individually. Tables are assigned to guests automatically at check-in.</div>
+            <div className="tp-empty-sub">Use Bulk Create to set up all your tables at once, or add them individually.</div>
           </div>
         ) : (
           <div className="tp-grid">
             {tables.map(t => {
-              const pct   = t.capacity > 0 ? (t.currentOccupancy / t.capacity) * 100 : 0
-              const isFull = t.currentOccupancy >= t.capacity
-              const color  = t.reservedForTier?.color ?? "#b48c3c"
+              const pct      = t.capacity > 0 ? (t.currentOccupancy / t.capacity) * 100 : 0
+              const isFull   = t.currentOccupancy >= t.capacity
+              const color    = t.reservedForTier?.color ?? "#b48c3c"
               const barColor = isFull ? "#ef4444" : pct > 70 ? "#f59e0b" : "#22c55e"
               return (
                 <div key={t.id} className={`tp-card${isFull ? " full" : ""}`}>
                   <div className="tp-card-num">{t.tableNumber}</div>
                   <div className="tp-card-label">{t.label ?? `Table ${t.tableNumber}`}</div>
                   <div className="tp-card-bar-wrap">
-                    <div className="tp-card-bar-fill" style={{ width: `${Math.min(pct, 100)}%`, background: barColor }} />
+                    <div className="tp-card-bar-fill" style={{ width:`${Math.min(pct,100)}%`, background:barColor }} />
                   </div>
                   <div className="tp-card-seats">{t.currentOccupancy}/{t.capacity} seats</div>
                   {t.reservedForTier && (
-                    <div className="tp-card-tier" style={{ color, borderColor: color + "55", background: color + "18" }}>
-                      {t.reservedForTier.name}
-                    </div>
+                    <div className="tp-card-tier" style={{ color, borderColor:color+"55", background:color+"18" }}>{t.reservedForTier.name}</div>
                   )}
-                  {t.isReleased && (
-                    <div style={{ fontSize: "0.6rem", color: "#f59e0b", marginBottom: "0.5rem" }}>Released to pool</div>
-                  )}
+                  {t.isReleased && <div style={{ fontSize:".6rem", color:"#f59e0b", marginBottom:".5rem" }}>Released to pool</div>}
                   <div className="tp-card-actions">
                     <button className="tp-btn tp-btn-danger" onClick={() => handleDelete(t.id, t.label ?? `Table ${t.tableNumber}`)} disabled={deletingId === t.id}>
                       {deletingId === t.id ? "…" : "Remove"}

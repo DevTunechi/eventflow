@@ -59,7 +59,6 @@ export async function PATCH(
   const { id } = await params
 
   try {
-    // Confirm ownership
     const existing = await prisma.event.findFirst({
       where: { id, plannerId: session.uid },
     })
@@ -69,16 +68,18 @@ export async function PATCH(
 
     const body = await req.json()
 
-    // Whitelist updatable fields
     const {
-      title, description, date, endDate,
-      venue, city, state, country,
-      coverImage, brandColor,
+      name, title, description,
+      date, endDate,
+      venueName, venue, city, state, country,
+      venueCapacity,
+      invitationCard,   // ← was incorrectly named coverImage in old handler
+      brandColor,
       inviteModel, requireOtp,
       status,
+      totalTables, seatsPerTable, releaseReservedAfter,
     } = body
 
-    // Validate status transition
     const VALID_STATUSES = ["DRAFT", "PUBLISHED", "ONGOING", "COMPLETED", "CANCELLED"]
     if (status && !VALID_STATUSES.includes(status)) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 })
@@ -87,19 +88,27 @@ export async function PATCH(
     const updated = await prisma.event.update({
       where: { id },
       data: {
-        ...(title        !== undefined && { title }),
-        ...(description  !== undefined && { description }),
-        ...(date         !== undefined && { date: new Date(date) }),
-        ...(endDate      !== undefined && { endDate: endDate ? new Date(endDate) : null }),
-        ...(venue        !== undefined && { venue }),
-        ...(city         !== undefined && { city }),
-        ...(state        !== undefined && { state }),
-        ...(country      !== undefined && { country }),
-        ...(coverImage   !== undefined && { coverImage }),
-        ...(brandColor   !== undefined && { brandColor }),
-        ...(inviteModel  !== undefined && { inviteModel }),
-        ...(requireOtp   !== undefined && { requireOtp }),
-        ...(status       !== undefined && { status }),
+        // Accept both name and title for backwards compat
+        ...((name  !== undefined) && { name:  name  }),
+        ...((title !== undefined) && { name:  title }),
+        ...(description       !== undefined && { description }),
+        ...(date              !== undefined && (date ? { eventDate: new Date(date) } : {})),
+        ...(endDate           !== undefined && (endDate ? { endDate: new Date(endDate) } : {})),
+        // Accept both venueName and venue
+        ...((venueName !== undefined) && { venueName }),
+        ...((venue     !== undefined) && { venueName: venue }),
+        ...(city              !== undefined && { city }),
+        ...(state             !== undefined && { state }),
+        ...(country           !== undefined && { country }),
+        ...(venueCapacity     !== undefined && { venueCapacity: venueCapacity ? parseInt(venueCapacity) : null }),
+        ...(invitationCard    !== undefined && { invitationCard }),   // ← fixed
+        ...(brandColor        !== undefined && { brandColor }),
+        ...(inviteModel       !== undefined && { inviteModel }),
+        ...(requireOtp        !== undefined && { requireOtp }),
+        ...(status            !== undefined && { status }),
+        ...(totalTables       !== undefined && { totalTables:        totalTables ? parseInt(totalTables) : null }),
+        ...(seatsPerTable     !== undefined && { seatsPerTable:      seatsPerTable ? parseInt(seatsPerTable) : null }),
+        ...(releaseReservedAfter !== undefined && { releaseReservedAfter: releaseReservedAfter ? parseInt(releaseReservedAfter) : null }),
       },
       include: {
         guestTiers: {
