@@ -8,7 +8,6 @@
 //
 // Steps:
 //   ✓ Event published          (auto complete)
-//   ○ Connect WhatsApp         (opens WASetupModal)
 //   ○ Add your guests          (links to guests page)
 //   ○ Send invites             (links to guests page)
 //
@@ -16,27 +15,21 @@
 // State not persisted — shown once per publish.
 // ─────────────────────────────────────────────
 
-import { useState, useEffect } from "react"
-import WhatsAppSetupModal from "./WhatsAppSetupModal"
+import { useEffect } from "react"
 
 interface Props {
-  eventId:       string
-  eventName:     string
-  waConnected:   boolean
-  guestCount:    number
-  onClose:       () => void
+  eventId:    string
+  eventName:  string
+  guestCount: number
+  onClose:    () => void
 }
 
 export default function PostPublishChecklist({
   eventId,
   eventName,
-  waConnected: initialWaConnected,
   guestCount,
   onClose,
 }: Props) {
-  const [waConnected,    setWaConnected]    = useState(initialWaConnected)
-  const [showWAModal,    setShowWAModal]    = useState(false)
-  const [waDisplayName,  setWaDisplayName]  = useState("")
 
   // Trap body scroll
   useEffect(() => {
@@ -46,54 +39,44 @@ export default function PostPublishChecklist({
 
   // Close on Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && !showWAModal) onClose() }
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [onClose, showWAModal])
+  }, [onClose])
 
   const steps = [
     {
-      id:       "published",
-      icon:     "🎉",
-      title:    "Event published",
-      desc:     `${eventName} is live and ready.`,
-      done:     true,
-      action:   null,
+      id:     "published",
+      icon:   "🎉",
+      title:  "Event published",
+      desc:   `${eventName} is live and ready.`,
+      done:   true,
+      action: null,
+      cta:    null,
     },
     {
-      id:       "whatsapp",
-      icon:     "📲",
-      title:    waConnected ? "WhatsApp connected" : "Connect WhatsApp",
-      desc:     waConnected
-        ? `Invites will send from ${waDisplayName || "your business number"}.`
-        : "Required to send invites to your guests via WhatsApp.",
-      done:     waConnected,
-      action:   waConnected ? null : () => setShowWAModal(true),
-      cta:      "Connect now →",
-    },
-    {
-      id:       "guests",
-      icon:     "👥",
-      title:    guestCount > 0 ? `${guestCount} guests added` : "Add your guests",
-      desc:     guestCount > 0
+      id:     "guests",
+      icon:   "👥",
+      title:  guestCount > 0 ? `${guestCount} guests added` : "Add your guests",
+      desc:   guestCount > 0
         ? "You can add more or import a CSV anytime."
         : "Add guests manually, upload a CSV, or sync a Google Sheet.",
-      done:     guestCount > 0,
-      action:   () => { onClose(); window.location.href = `/events/${eventId}/guests` },
-      cta:      "Add guests →",
+      done:   guestCount > 0,
+      action: () => { onClose(); window.location.href = `/events/${eventId}/guests` },
+      cta:    "Add guests →",
     },
     {
-      id:       "invites",
-      icon:     "✉️",
-      title:    "Send invites",
-      desc:     "Send personalised WhatsApp invites to all guests at once.",
-      done:     false,
-      action:   () => { onClose(); window.location.href = `/events/${eventId}/guests` },
-      cta:      "Go to guests →",
+      id:     "invites",
+      icon:   "✉️",
+      title:  "Send invites",
+      desc:   "Send personalised WhatsApp invites to all guests at once.",
+      done:   false,
+      action: () => { onClose(); window.location.href = `/events/${eventId}/guests` },
+      cta:    "Go to guests →",
     },
   ]
 
-  const allDone = waConnected && guestCount > 0
+  const allDone = guestCount > 0
 
   return (
     <>
@@ -195,7 +178,6 @@ export default function PostPublishChecklist({
         .ppc-progress {
           height: 2px;
           background: var(--border);
-          margin: 0 1.5rem 0;
           border-radius: 99px;
           overflow: hidden;
         }
@@ -273,18 +255,6 @@ export default function PostPublishChecklist({
 
         </div>
       </div>
-
-      {/* WhatsApp setup modal — triggered from checklist */}
-      {showWAModal && (
-        <WhatsAppSetupModal
-          onConnected={(name) => {
-            setWaConnected(true)
-            setWaDisplayName(name)
-            setShowWAModal(false)
-          }}
-          onClose={() => setShowWAModal(false)}
-        />
-      )}
     </>
   )
 }

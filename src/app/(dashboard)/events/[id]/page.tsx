@@ -67,16 +67,13 @@ export default function EventDetailPage() {
   const router   = useRouter()
   const { user } = useAuth()
 
-  const [event,      setEvent]      = useState<EventDetail | null>(null)
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState<string | null>(null)
-  const [copied,     setCopied]     = useState(false)
-  const [publishing, setPublishing] = useState(false)
-  const [deleting,   setDeleting]   = useState(false)
-
-  // Post-publish checklist
-  const [showChecklist,  setShowChecklist]  = useState(false)
-  const [waConnected,    setWaConnected]    = useState(false)
+  const [event,         setEvent]         = useState<EventDetail | null>(null)
+  const [loading,       setLoading]       = useState(true)
+  const [error,         setError]         = useState<string | null>(null)
+  const [copied,        setCopied]        = useState(false)
+  const [publishing,    setPublishing]    = useState(false)
+  const [deleting,      setDeleting]      = useState(false)
+  const [showChecklist, setShowChecklist] = useState(false)
 
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem("ef-session") ?? ""
@@ -101,19 +98,7 @@ export default function EventDetailPage() {
     }
   }, [id])
 
-  // Check WhatsApp connection status on mount
-  const checkWaStatus = useCallback(async () => {
-    try {
-      const res  = await fetch("/api/whatsapp/status", { headers: getAuthHeaders() })
-      const data = await res.json()
-      setWaConnected(data.connected ?? false)
-    } catch { /* silent */ }
-  }, [])
-
-  useEffect(() => {
-    fetchEvent()
-    checkWaStatus()
-  }, [fetchEvent, checkWaStatus])
+  useEffect(() => { fetchEvent() }, [fetchEvent])
 
   const copyLink = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -126,9 +111,9 @@ export default function EventDetailPage() {
     setPublishing(true)
     try {
       const res = await fetch(`/api/events/${id}`, {
-        method: "PATCH",
+        method:  "PATCH",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ status: "PUBLISHED" }),
+        body:    JSON.stringify({ status: "PUBLISHED" }),
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
@@ -138,10 +123,9 @@ export default function EventDetailPage() {
         vendors:    data.event.vendors    ?? [],
         ushers:     data.event.ushers     ?? [],
       })
-      // Show post-publish checklist
       setShowChecklist(true)
     } catch { console.error("Publish failed") }
-    finally { setPublishing(false) }
+    finally  { setPublishing(false) }
   }
 
   const handleDelete = async () => {
@@ -179,17 +163,9 @@ export default function EventDetailPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
 
-        /* ── Mobile overflow fix ── */
         *, *::before, *::after { box-sizing: border-box; }
 
-        .ed {
-          max-width: 1000px;
-          margin: 0 auto;
-          padding: 2rem 1.5rem 4rem;
-          animation: edIn 0.35s ease;
-          width: 100%;
-          overflow-x: hidden;
-        }
+        .ed { max-width:1000px; margin:0 auto; padding:2rem 1.5rem 4rem; animation:edIn 0.35s ease; width:100%; overflow-x:hidden; }
         @keyframes edIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
 
         .ed-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:2rem; flex-wrap:wrap; gap:0.75rem; overflow-x:hidden; }
@@ -272,25 +248,6 @@ export default function EventDetailPage() {
         .ed-info-v { font-size:0.78rem; color:var(--text-2); text-align:right; word-break:break-all; }
 
         .ed-description { font-size:0.85rem; color:var(--text-2); line-height:1.7; font-weight:300; word-break:break-word; }
-
-        /* WhatsApp nudge card */
-        .ed-wa-nudge {
-          padding: 1rem 1.25rem;
-          background: rgba(37,211,102,0.05);
-          border: 1px solid rgba(37,211,102,0.2);
-          margin-bottom: 1.25rem;
-          display: flex; align-items: center; justify-content: space-between;
-          gap: 1rem; flex-wrap: wrap;
-        }
-        .ed-wa-nudge-text { font-size: 0.8rem; color: rgba(37,211,102,0.85); line-height: 1.5; }
-        .ed-wa-nudge-text strong { display: block; font-weight: 500; color: #25d366; margin-bottom: 0.15rem; }
-        .ed-wa-nudge-btn {
-          padding: 0.5rem 1rem; background: #25d366; color: #fff;
-          font-family: 'DM Sans', sans-serif; font-size: 0.775rem; font-weight: 500;
-          border: none; border-radius: 5px; cursor: pointer; white-space: nowrap;
-          transition: background 0.2s; flex-shrink: 0;
-        }
-        .ed-wa-nudge-btn:hover { background: #1db954; }
       `}</style>
 
       <div className="ed">
@@ -361,22 +318,6 @@ export default function EventDetailPage() {
             </div>
             <button className="ed-btn ed-btn-gold" onClick={handlePublish} disabled={publishing}>
               {publishing ? "Publishing…" : "Publish Now"}
-            </button>
-          </div>
-        )}
-
-        {/* WhatsApp nudge — shown on published events when not connected */}
-        {event.status !== "DRAFT" && !waConnected && (
-          <div className="ed-wa-nudge">
-            <div className="ed-wa-nudge-text">
-              <strong>📲 Connect WhatsApp to send invites</strong>
-              Your event is live but you can&apos;t send invites until you connect your WhatsApp Business number.
-            </div>
-            <button
-              className="ed-wa-nudge-btn"
-              onClick={() => setShowChecklist(true)}
-            >
-              Set up now →
             </button>
           </div>
         )}
@@ -461,7 +402,7 @@ export default function EventDetailPage() {
               </div>
             )}
 
-            {/* Next steps */}
+            {/* Manage Event nav */}
             <div className="ed-card">
               <div className="ed-card-title">Manage Event</div>
               <div className="ed-nextsteps">
@@ -545,17 +486,13 @@ export default function EventDetailPage() {
         </div>
       </div>
 
-      {/* Post-publish checklist */}
+      {/* Post-publish checklist — no WA connection step needed */}
       {showChecklist && event && (
         <PostPublishChecklist
           eventId={event.id}
           eventName={event.name}
-          waConnected={waConnected}
           guestCount={event._count?.guests ?? 0}
-          onClose={() => {
-            setShowChecklist(false)
-            checkWaStatus() // refresh WA status when checklist closes
-          }}
+          onClose={() => setShowChecklist(false)}
         />
       )}
     </>

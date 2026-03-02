@@ -5,21 +5,29 @@
 // Imported by:
 //   - /api/whatsapp/send/route.ts
 //   - /api/events/[id]/guests/send-invites/route.ts
+//
+// NOTE: encrypt/decrypt are kept for any
+// legacy data cleanup migrations but are no
+// longer used in the active send path.
+// Platform credentials come from env only.
 // ─────────────────────────────────────────────
 
 import crypto from "crypto"
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? ""
 
-// ── Encrypt / Decrypt ─────────────────────────
+// ── Encrypt / Decrypt (legacy — no longer used) ──
+// Kept only to support any migration scripts
+// that need to read old encrypted tokens from
+// the User table during cleanup.
 
 export function encrypt(plaintext: string): string {
   if (!ENCRYPTION_KEY) return plaintext
-  const key     = Buffer.from(ENCRYPTION_KEY, "hex")
-  const iv      = crypto.randomBytes(12)
-  const cipher  = crypto.createCipheriv("aes-256-gcm", key, iv)
+  const key       = Buffer.from(ENCRYPTION_KEY, "hex")
+  const iv        = crypto.randomBytes(12)
+  const cipher    = crypto.createCipheriv("aes-256-gcm", key, iv)
   const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()])
-  const tag     = cipher.getAuthTag()
+  const tag       = cipher.getAuthTag()
   return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`
 }
 
@@ -41,17 +49,34 @@ export function decrypt(ciphertext: string): string {
 
 // ── Normalise phone to E.164 ──────────────────
 // Handles Nigerian local format automatically.
-
 export function normalisePhone(raw: string): string {
   let phone = raw.replace(/[\s\-().]/g, "")
-  if (phone.startsWith("+")) return phone
+  if (phone.startsWith("+"))                        return phone
   if (phone.startsWith("0") && phone.length === 11) return `+234${phone.slice(1)}`
-  if (phone.startsWith("234")) return `+${phone}`
+  if (phone.startsWith("234"))                      return `+${phone}`
   return `+${phone}`
 }
 
-// ── Core send function ────────────────────────
+// ── Platform credentials helper ───────────────
+// Single source of truth for the EventFlow WABA.
+// All send paths should use this instead of
+// reading env vars directly.
+export function getPlatformWACredentials(): {
+  accessToken:   string
+  phoneNumberId: string
+} | null {
+  const accessToken   = process.env.WA_ACCESS_TOKEN?.trim()    ?? ""
+  const phoneNumberId = process.env.WA_PHONE_NUMBER_ID?.trim() ?? ""
 
+  if (!accessToken || !phoneNumberId) {
+    console.error("[whatsapp] WA_ACCESS_TOKEN or WA_PHONE_NUMBER_ID not set")
+    return null
+  }
+
+  return { accessToken, phoneNumberId }
+}
+
+// ── Core send function ────────────────────────
 export async function sendWhatsAppMessage({
   accessToken,
   phoneNumberId,
@@ -65,7 +90,6 @@ export async function sendWhatsAppMessage({
   message:       string
   previewUrl?:   boolean
 }): Promise<{ success: boolean; messageId?: string; error?: string }> {
-
   const phone = normalisePhone(to)
 
   const res = await fetch(
