@@ -72,7 +72,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: "/vendors",
+    href: "/events",
     label: "Vendors",
     icon: (
       // Briefcase icon
@@ -83,7 +83,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: "/ushers",
+    href: "/events",
     label: "Ushers",
     icon: (
       // Badge / ID icon
