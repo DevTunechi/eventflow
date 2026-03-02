@@ -179,10 +179,20 @@ export default function EventDetailPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
 
-        .ed { max-width: 1000px; margin: 0 auto; padding: 2rem 1.5rem 4rem; animation: edIn 0.35s ease; }
+        /* ── Mobile overflow fix ── */
+        *, *::before, *::after { box-sizing: border-box; }
+
+        .ed {
+          max-width: 1000px;
+          margin: 0 auto;
+          padding: 2rem 1.5rem 4rem;
+          animation: edIn 0.35s ease;
+          width: 100%;
+          overflow-x: hidden;
+        }
         @keyframes edIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
 
-        .ed-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:2rem; flex-wrap:wrap; gap:0.75rem; }
+        .ed-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:2rem; flex-wrap:wrap; gap:0.75rem; overflow-x:hidden; }
         .ed-back { font-size:0.78rem; color:var(--text-3); text-decoration:none; display:flex; align-items:center; gap:0.35rem; transition:color 0.2s; }
         .ed-back:hover { color:var(--gold); }
         .ed-acts { display:flex; gap:0.625rem; flex-wrap:wrap; }
@@ -197,17 +207,17 @@ export default function EventDetailPage() {
         .ed-btn-red:hover { border-color:#ef4444; color:#ef4444; }
         .ed-btn-red:disabled { opacity:0.4; cursor:not-allowed; }
 
-        .ed-cover { width:100%; aspect-ratio:16/5.5; position:relative; overflow:hidden; background:var(--bg-2); margin-bottom:2rem; }
+        .ed-cover { width:100%; max-width:100%; aspect-ratio:16/5.5; position:relative; overflow:hidden; background:var(--bg-2); margin-bottom:2rem; }
         .ed-cover-empty { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:0.72rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-3); }
 
         .ed-hdr { margin-bottom:2rem; }
         .ed-badges { display:flex; align-items:center; gap:0.625rem; margin-bottom:0.875rem; flex-wrap:wrap; }
         .ed-status { display:flex; align-items:center; gap:0.35rem; padding:0.28rem 0.7rem; border-radius:99px; font-size:0.65rem; font-weight:500; letter-spacing:0.08em; text-transform:uppercase; border:1px solid; }
-        .ed-status-dot { width:5px; height:5px; border-radius:50%; }
+        .ed-status-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
         .ed-badge { font-size:0.65rem; letter-spacing:0.05em; color:var(--text-3); padding:0.28rem 0.7rem; border:1px solid var(--border); }
-        .ed-title { font-family:'Cormorant Garamond',serif; font-size:clamp(1.875rem,4vw,3rem); font-weight:300; line-height:1.1; color:var(--text); margin-bottom:0.875rem; letter-spacing:-0.01em; }
+        .ed-title { font-family:'Cormorant Garamond',serif; font-size:clamp(1.875rem,4vw,3rem); font-weight:300; line-height:1.1; color:var(--text); margin-bottom:0.875rem; letter-spacing:-0.01em; word-break:break-word; }
         .ed-meta { display:flex; flex-wrap:wrap; gap:0.375rem 1.25rem; }
-        .ed-meta-item { display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; color:var(--text-2); font-weight:300; }
+        .ed-meta-item { display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; color:var(--text-2); font-weight:300; min-width:0; word-break:break-word; }
         .ed-meta-item svg { color:var(--gold); flex-shrink:0; }
 
         .ed-draft { padding:1rem 1.25rem; background:rgba(180,140,60,0.06); border:1px solid rgba(180,140,60,0.2); margin-bottom:1.75rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
@@ -217,37 +227,37 @@ export default function EventDetailPage() {
         .ed-body { display:grid; grid-template-columns:1fr 300px; gap:1.5rem; align-items:start; }
         @media (max-width:768px) { .ed-body { grid-template-columns:1fr; } }
 
-        .ed-card { background:var(--bg-2); border:1px solid var(--border); padding:1.375rem; margin-bottom:1.25rem; }
+        .ed-card { background:var(--bg-2); border:1px solid var(--border); padding:1.375rem; margin-bottom:1.25rem; min-width:0; max-width:100%; }
         .ed-card-title { font-size:0.6rem; font-weight:500; letter-spacing:0.2em; text-transform:uppercase; color:var(--gold); margin-bottom:1.125rem; display:flex; align-items:center; gap:0.75rem; }
         .ed-card-title::after { content:''; flex:1; height:1px; background:var(--border); }
 
         .ed-link-label { font-size:0.65rem; color:var(--text-3); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:0.45rem; }
-        .ed-link-row { display:flex; gap:0.5rem; margin-bottom:0.75rem; }
-        .ed-link-val { flex:1; padding:0.6rem 0.875rem; background:var(--bg); border:1px solid var(--border); color:var(--text-2); font-size:0.76rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .ed-copy { padding:0.6rem 0.875rem; background:transparent; border:1px solid var(--border); color:var(--text-3); font-size:0.7rem; letter-spacing:0.05em; cursor:pointer; transition:all 0.2s; font-family:'DM Sans',sans-serif; white-space:nowrap; }
+        .ed-link-row { display:flex; gap:0.5rem; margin-bottom:0.75rem; min-width:0; max-width:100%; }
+        .ed-link-val { flex:1; min-width:0; padding:0.6rem 0.875rem; background:var(--bg); border:1px solid var(--border); color:var(--text-2); font-size:0.76rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .ed-copy { padding:0.6rem 0.875rem; background:transparent; border:1px solid var(--border); color:var(--text-3); font-size:0.7rem; letter-spacing:0.05em; cursor:pointer; transition:all 0.2s; font-family:'DM Sans',sans-serif; white-space:nowrap; flex-shrink:0; }
         .ed-copy:hover { border-color:var(--gold); color:var(--gold); }
         .ed-copy.ok { border-color:#22c55e; color:#22c55e; }
-        .ed-note { font-size:0.73rem; color:var(--text-3); line-height:1.6; padding:0.75rem; background:var(--bg); border-left:2px solid rgba(180,140,60,0.3); }
+        .ed-note { font-size:0.73rem; color:var(--text-3); line-height:1.6; padding:0.75rem; background:var(--bg); border-left:2px solid rgba(180,140,60,0.3); word-break:break-word; }
 
         .ed-tiers { display:flex; flex-direction:column; gap:0.625rem; }
-        .ed-tier { padding:0.875rem 1rem; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; gap:0.875rem; }
+        .ed-tier { padding:0.875rem 1rem; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; gap:0.875rem; min-width:0; max-width:100%; }
         .ed-tier-bar { width:4px; height:40px; flex-shrink:0; border-radius:2px; }
         .ed-tier-info { flex:1; min-width:0; }
-        .ed-tier-name { font-size:0.875rem; font-weight:500; color:var(--text); margin-bottom:0.2rem; }
+        .ed-tier-name { font-size:0.875rem; font-weight:500; color:var(--text); margin-bottom:0.2rem; word-break:break-word; }
         .ed-tier-meta { font-size:0.68rem; color:var(--text-3); display:flex; gap:0.625rem; flex-wrap:wrap; }
-        .ed-tier-chip { font-size:0.6rem; font-weight:500; letter-spacing:0.06em; padding:0.15rem 0.45rem; border-radius:99px; border:1px solid; }
-        .ed-tier-count { text-align:right; white-space:nowrap; }
+        .ed-tier-chip { font-size:0.6rem; font-weight:500; letter-spacing:0.06em; padding:0.15rem 0.45rem; border-radius:99px; border:1px solid; white-space:nowrap; }
+        .ed-tier-count { text-align:right; white-space:nowrap; flex-shrink:0; }
         .ed-tier-count-num { font-size:0.95rem; color:var(--text-2); font-weight:400; }
         .ed-tier-count-label { font-size:0.6rem; color:var(--text-3); letter-spacing:0.06em; text-transform:uppercase; }
 
         .ed-nextsteps { display:flex; flex-direction:column; gap:0.5rem; }
-        .ed-nav-card { display:flex; align-items:center; gap:0.875rem; padding:0.875rem 1rem; background:var(--bg); border:1px solid var(--border); text-decoration:none; transition:all 0.2s; cursor:pointer; }
+        .ed-nav-card { display:flex; align-items:center; gap:0.875rem; padding:0.875rem 1rem; background:var(--bg); border:1px solid var(--border); text-decoration:none; transition:all 0.2s; cursor:pointer; min-width:0; max-width:100%; }
         .ed-nav-card:hover { border-color:var(--gold); background:rgba(180,140,60,0.04); }
         .ed-nav-icon { font-size:1.125rem; flex-shrink:0; width:32px; text-align:center; }
         .ed-nav-info { flex:1; min-width:0; }
         .ed-nav-label { font-size:0.82rem; font-weight:500; color:var(--text); margin-bottom:0.15rem; }
         .ed-nav-desc { font-size:0.7rem; color:var(--text-3); }
-        .ed-nav-count { font-size:0.7rem; color:var(--text-3); white-space:nowrap; padding:0.2rem 0.5rem; border:1px solid var(--border); }
+        .ed-nav-count { font-size:0.7rem; color:var(--text-3); white-space:nowrap; padding:0.2rem 0.5rem; border:1px solid var(--border); flex-shrink:0; }
         .ed-nav-arrow { color:var(--text-3); font-size:0.8rem; flex-shrink:0; transition:transform 0.2s; }
         .ed-nav-card:hover .ed-nav-arrow { transform:translateX(3px); color:var(--gold); }
 
@@ -258,10 +268,10 @@ export default function EventDetailPage() {
 
         .ed-info-row { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:0.5rem 0; border-bottom:1px solid var(--border); }
         .ed-info-row:last-child { border-bottom:none; }
-        .ed-info-k { font-size:0.65rem; color:var(--text-3); letter-spacing:0.06em; text-transform:uppercase; }
-        .ed-info-v { font-size:0.78rem; color:var(--text-2); text-align:right; }
+        .ed-info-k { font-size:0.65rem; color:var(--text-3); letter-spacing:0.06em; text-transform:uppercase; flex-shrink:0; }
+        .ed-info-v { font-size:0.78rem; color:var(--text-2); text-align:right; word-break:break-all; }
 
-        .ed-description { font-size:0.85rem; color:var(--text-2); line-height:1.7; font-weight:300; }
+        .ed-description { font-size:0.85rem; color:var(--text-2); line-height:1.7; font-weight:300; word-break:break-word; }
 
         /* WhatsApp nudge card */
         .ed-wa-nudge {
@@ -278,7 +288,7 @@ export default function EventDetailPage() {
           padding: 0.5rem 1rem; background: #25d366; color: #fff;
           font-family: 'DM Sans', sans-serif; font-size: 0.775rem; font-weight: 500;
           border: none; border-radius: 5px; cursor: pointer; white-space: nowrap;
-          transition: background 0.2s;
+          transition: background 0.2s; flex-shrink: 0;
         }
         .ed-wa-nudge-btn:hover { background: #1db954; }
       `}</style>
