@@ -52,6 +52,87 @@ const fmtDate = (d: string | null) =>
 const fmtTime = (d: string | null) =>
   d ? new Date(d).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" }) : ""
 
+// ── Collapsible tier group component ─────────
+function TierGroup({
+  label, color, guests, isCollapsed, onToggle, deletingId, handleDelete,
+}: {
+  label:        string
+  color:        string
+  guests:       Guest[]
+  isCollapsed:  boolean
+  onToggle:     () => void
+  deletingId:   string | null
+  handleDelete: (id: string, name: string) => void
+}) {
+  const confirmed = guests.filter(g => g.rsvpStatus === "CONFIRMED").length
+
+  return (
+    <div className="gp-tier-group">
+      <button className="gp-tier-header" onClick={onToggle}>
+        <div style={{ display:"flex", alignItems:"center", gap:"0.625rem" }}>
+          <div className="gp-tier-swatch" style={{ background: color }} />
+          <span className="gp-tier-label">{label}</span>
+          <span className="gp-tier-pill">{guests.length}</span>
+          {confirmed > 0 && (
+            <span className="gp-tier-pill" style={{ color:"#22c55e", borderColor:"rgba(34,197,94,0.3)", background:"rgba(34,197,94,0.08)" }}>
+              {confirmed} confirmed
+            </span>
+          )}
+        </div>
+        <span className="gp-tier-chevron" style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>▾</span>
+      </button>
+
+      {!isCollapsed && (
+        <div className="gp-tier-rows">
+          {guests.map(g => {
+            const rsvp     = RSVP_CONFIG[g.rsvpStatus]
+            const fullName = `${g.firstName} ${g.lastName}`
+            return (
+              <div className="gp-row" key={g.id}>
+                <div className="gp-row-guest">
+                  <div className="gp-avatar" style={{ background:color+"33", border:`1.5px solid ${color}55`, color }}>
+                    {initials(g.firstName, g.lastName)}
+                  </div>
+                  <div className="gp-row-info">
+                    <div className="gp-row-name">{fullName}{g.isFlagged && <span className="gp-flag">⚠</span>}</div>
+                    <div className="gp-row-sub">{g.phone ?? g.email ?? "—"}</div>
+                  </div>
+                </div>
+                <div className="gp-row-cell gp-hide-sm">
+                  <span className="gp-status" style={{ color:rsvp.color, background:rsvp.bg, borderColor:rsvp.color+"44" }}>{rsvp.label}</span>
+                  {g.rsvpAt && <div style={{ fontSize:"0.6rem", color:"var(--text-3)", marginTop:"0.15rem" }}>{fmtDate(g.rsvpAt)}</div>}
+                </div>
+                <div className="gp-row-cell gp-hide-md">
+                  <div className="gp-checkin">
+                    <div className="gp-checkin-dot" style={{ background: g.checkedIn ? "#22c55e" : "var(--border)" }} />
+                    <span style={{ color: g.checkedIn ? "#22c55e" : "var(--text-3)" }}>
+                      {g.checkedIn ? `In · ${fmtTime(g.checkedInAt)}` : "Not yet"}
+                    </span>
+                  </div>
+                </div>
+                <div className="gp-row-cell gp-hide-md">
+                  {g.inviteSentAt
+                    ? <span style={{ fontSize:"0.7rem", color:"#22c55e" }}>✓ {fmtDate(g.inviteSentAt)}</span>
+                    : <span style={{ fontSize:"0.7rem", color:"var(--text-3)" }}>Not sent</span>
+                  }
+                </div>
+                <div className="gp-row-cell gp-hide-lg">
+                  <span style={{ fontSize:"0.72rem", color:"var(--text-3)" }}>{g.tableNumber ?? "—"}</span>
+                </div>
+                <div className="gp-row-cell" style={{ textAlign:"right" }}>
+                  <button className="gp-btn gp-btn-danger" onClick={() => handleDelete(g.id, fullName)} disabled={deletingId === g.id}>
+                    {deletingId === g.id ? "…" : "Remove"}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function GuestsPage() {
   const { id } = useParams<{ id: string }>()
 
@@ -64,7 +145,15 @@ export default function GuestsPage() {
   const [filterStatus, setFilterStatus] = useState<RSVPStatus | "ALL">("ALL")
   const [filterTier,   setFilterTier]   = useState<string>("ALL")
 
-  const [addForm,    setAddForm]    = useState({ firstName: "", lastName: "", phone: "", tierId: "" })
+  // Collapsible tier groups — Set of collapsed group labels
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const toggleGroup = (label: string) => setCollapsedGroups(prev => {
+    const next = new Set(prev)
+    next.has(label) ? next.delete(label) : next.add(label)
+    return next
+  })
+
+  const [addForm,    setAddForm]    = useState({ firstName:"", lastName:"", phone:"", tierId:"" })
   const [adding,     setAdding]     = useState(false)
   const [addError,   setAddError]   = useState("")
   const [addSuccess, setAddSuccess] = useState(false)
@@ -103,12 +192,28 @@ export default function GuestsPage() {
   useEffect(() => { load() }, [load])
 
   const filtered = guests.filter(g => {
-    const name = `${g.firstName} ${g.lastName}`.toLowerCase()
+    const name        = `${g.firstName} ${g.lastName}`.toLowerCase()
     const matchSearch = !search || name.includes(search.toLowerCase()) || (g.phone ?? "").includes(search)
     const matchStatus = filterStatus === "ALL" || g.rsvpStatus === filterStatus
     const matchTier   = filterTier   === "ALL" || g.tier?.id === filterTier
     return matchSearch && matchStatus && matchTier
   })
+
+  // Group filtered guests by tier, respecting event tier order
+  const groupedGuests = (() => {
+    const map = new Map<string, { label: string; color: string; guests: Guest[] }>()
+    filtered.forEach(g => {
+      const key   = g.tier?.id ?? "__none__"
+      const label = g.tier?.name ?? "No Tier"
+      const color = g.tier?.color ?? "#6b7280"
+      if (!map.has(key)) map.set(key, { label, color, guests: [] })
+      map.get(key)!.guests.push(g)
+    })
+    const groups: { label: string; color: string; guests: Guest[] }[] = []
+    event?.guestTiers.forEach(t => { if (map.has(t.id)) groups.push(map.get(t.id)!) })
+    if (map.has("__none__")) groups.push(map.get("__none__")!)
+    return groups
+  })()
 
   const stats = {
     total:     guests.length,
@@ -130,7 +235,7 @@ export default function GuestsPage() {
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed") }
       const { guest: newGuest } = await res.json()
       setGuests(prev => [newGuest, ...prev])
-      setAddForm({ firstName: "", lastName: "", phone: "", tierId: "" })
+      setAddForm({ firstName:"", lastName:"", phone:"", tierId:"" })
       setAddSuccess(true); setTimeout(() => setAddSuccess(false), 3000)
     } catch (e: unknown) { setAddError(e instanceof Error ? e.message : "Failed to add guest") }
     finally { setAdding(false) }
@@ -141,17 +246,17 @@ export default function GuestsPage() {
     if (!file.name.endsWith(".csv")) { setCsvError("Please upload a .csv file."); return }
     const reader = new FileReader()
     reader.onload = (e) => {
-      const text = e.target?.result as string
+      const text  = e.target?.result as string
       const lines = text.trim().split(/\r?\n/)
       if (lines.length < 2) { setCsvError("CSV appears to be empty."); return }
       const header = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/[^a-z]/g, ""))
-      const fnIdx = header.findIndex(h => h.includes("first") || h === "firstname" || h === "fname")
-      const lnIdx = header.findIndex(h => h.includes("last")  || h === "lastname"  || h === "lname")
-      const phIdx = header.findIndex(h => h.includes("phone") || h === "mobile"    || h === "tel")
+      const fnIdx  = header.findIndex(h => h.includes("first") || h === "firstname" || h === "fname")
+      const lnIdx  = header.findIndex(h => h.includes("last")  || h === "lastname"  || h === "lname")
+      const phIdx  = header.findIndex(h => h.includes("phone") || h === "mobile"    || h === "tel")
       if (fnIdx === -1 || lnIdx === -1) { setCsvError("CSV must have columns for First Name and Last Name."); return }
       const rows = lines.slice(1).map(line => {
         const cols = line.split(",")
-        return { firstName: (cols[fnIdx] ?? "").trim(), lastName: (cols[lnIdx] ?? "").trim(), phone: phIdx !== -1 ? (cols[phIdx] ?? "").trim() : "" }
+        return { firstName:(cols[fnIdx]??"").trim(), lastName:(cols[lnIdx]??"").trim(), phone:phIdx !== -1 ? (cols[phIdx]??"").trim() : "" }
       }).filter(r => r.firstName || r.lastName)
       if (!rows.length) { setCsvError("No valid rows found in CSV."); return }
       setCsvPreview(rows.slice(0, 200)); setCsvFile(file)
@@ -211,7 +316,7 @@ export default function GuestsPage() {
     if (!confirm(`Remove ${name} from the guest list?`)) return
     setDeletingId(guestId)
     try {
-      await fetch(`/api/events/${id}/guests/${guestId}`, { method: "DELETE", headers: getAuthHeaders() })
+      await fetch(`/api/events/${id}/guests/${guestId}`, { method:"DELETE", headers:getAuthHeaders() })
       setGuests(prev => prev.filter(g => g.id !== guestId))
     } finally { setDeletingId(null) }
   }
@@ -222,10 +327,9 @@ export default function GuestsPage() {
       ...guests.map(g => [g.firstName,g.lastName,g.phone??"",g.email??"",g.tier?.name??"",g.rsvpStatus,g.checkedIn?"Yes":"No",g.tableNumber??"",g.inviteSentAt?fmtDate(g.inviteSentAt):"No"])
     ]
     const csv  = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n")
-    const blob = new Blob([csv], { type: "text/csv" })
+    const blob = new Blob([csv], { type:"text/csv" })
     const url  = URL.createObjectURL(blob)
-    const a    = document.createElement("a")
-    a.href = url; a.download = `${event?.name ?? "guests"}-guest-list.csv`; a.click()
+    const a    = document.createElement("a"); a.href=url; a.download=`${event?.name??"guests"}-guest-list.csv`; a.click()
     URL.revokeObjectURL(url)
   }
 
@@ -246,36 +350,34 @@ export default function GuestsPage() {
   return (
     <>
       <style>{`
+        *, *::before, *::after { box-sizing: border-box; }
+
         .gp { max-width:1000px; margin:0 auto; padding:0 0 5rem; animation:gpIn 0.3s ease; }
         @keyframes gpIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
 
-        /* ── Topbar ── */
-        .gp-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; gap:0.75rem; }
+        .gp-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; gap:0.75rem; flex-wrap:wrap; }
         .gp-back { font-size:0.78rem; color:var(--text-3); text-decoration:none; display:flex; align-items:center; gap:0.35rem; transition:color 0.2s; flex-shrink:0; }
         .gp-back:hover { color:var(--gold); }
         .gp-top-right { display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
 
-        /* ── Buttons ── */
         .gp-btn { padding:0.45rem 0.875rem; font-family:'DM Sans',sans-serif; font-size:0.75rem; cursor:pointer; border:none; transition:all 0.2s; display:inline-flex; align-items:center; gap:0.35rem; letter-spacing:0.02em; text-decoration:none; border-radius:5px; white-space:nowrap; }
         .gp-btn-gold { background:var(--gold); color:#0a0a0a; font-weight:500; }
         .gp-btn-gold:hover:not(:disabled) { background:#c9a050; }
         .gp-btn-gold:disabled { opacity:0.45; cursor:not-allowed; }
         .gp-btn-ghost { background:transparent; border:1px solid var(--border); color:var(--text-2); }
         .gp-btn-ghost:hover { border-color:var(--border-hover); color:var(--text); }
-        .gp-btn-danger { background:transparent; border:1px solid rgba(239,68,68,0.2); color:rgba(239,68,68,0.6); padding:0.3rem 0.6rem; font-size:0.7rem; }
+        .gp-btn-danger { background:transparent; border:1px solid rgba(239,68,68,0.2); color:rgba(239,68,68,0.6); padding:0.28rem 0.55rem; font-size:0.68rem; }
         .gp-btn-danger:hover:not(:disabled) { border-color:#ef4444; color:#ef4444; }
         .gp-btn-danger:disabled { opacity:0.3; cursor:not-allowed; }
         .gp-btn-send { background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); color:#22c55e; }
         .gp-btn-send:hover:not(:disabled) { background:rgba(34,197,94,0.18); }
         .gp-btn-send:disabled { opacity:0.4; cursor:not-allowed; }
 
-        /* ── Heading ── */
         .gp-heading { margin-bottom:1.5rem; }
         .gp-title { font-family:'Cormorant Garamond',serif; font-size:clamp(1.5rem,5vw,2.25rem); font-weight:300; color:var(--text); letter-spacing:-0.01em; margin-bottom:0.25rem; }
         .gp-sub { font-size:0.78rem; color:var(--text-3); display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; }
         .gp-model-badge { font-size:0.6rem; font-weight:500; letter-spacing:0.08em; text-transform:uppercase; padding:0.2rem 0.6rem; border-radius:99px; border:1px solid; }
 
-        /* ── Stats ── */
         .gp-stats { display:grid; grid-template-columns:repeat(2,1fr); gap:0.5rem; margin-bottom:1.5rem; }
         @media(min-width:480px) { .gp-stats { grid-template-columns:repeat(3,1fr); } }
         @media(min-width:700px) { .gp-stats { grid-template-columns:repeat(5,1fr); } }
@@ -283,59 +385,79 @@ export default function GuestsPage() {
         .gp-stat-num { font-family:'Cormorant Garamond',serif; font-size:1.625rem; font-weight:300; color:var(--gold); line-height:1; margin-bottom:0.2rem; }
         .gp-stat-label { font-size:0.55rem; color:var(--text-3); letter-spacing:0.1em; text-transform:uppercase; }
 
-        /* ── Tabs ── */
         .gp-tabs { display:flex; border-bottom:1px solid var(--border); margin-bottom:1.5rem; overflow-x:auto; -webkit-overflow-scrolling:touch; }
         .gp-tabs::-webkit-scrollbar { display:none; }
         .gp-tab { padding:0.625rem 1rem; font-size:0.75rem; color:var(--text-3); cursor:pointer; border-bottom:2px solid transparent; transition:all 0.2s; font-family:'DM Sans',sans-serif; background:transparent; border-top:none; border-left:none; border-right:none; letter-spacing:0.03em; white-space:nowrap; flex-shrink:0; }
         .gp-tab:hover { color:var(--text-2); }
         .gp-tab.active { color:var(--gold); border-bottom-color:var(--gold); }
 
-        /* ── Filters ── */
-        .gp-filters { display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap; }
+        .gp-filters { display:flex; gap:0.5rem; margin-bottom:0.75rem; flex-wrap:wrap; }
         .gp-search { flex:1; min-width:150px; padding:0.525rem 0.75rem; background:var(--bg-2); border:1px solid var(--border); color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.8rem; outline:none; border-radius:5px; }
         .gp-search:focus { border-color:var(--gold); }
         .gp-select { padding:0.525rem 0.625rem; background:var(--bg-2); border:1px solid var(--border); color:var(--text-2); font-family:'DM Sans',sans-serif; font-size:0.75rem; outline:none; border-radius:5px; cursor:pointer; max-width:130px; }
         .gp-select:focus { border-color:var(--gold); }
 
-        /* ── Desktop table ── */
-        .gp-table-wrap { background:var(--bg-2); border:1px solid var(--border); overflow:hidden; border-radius:5px; }
-        .gp-table { width:100%; border-collapse:collapse; }
-        .gp-th { font-size:0.58rem; font-weight:500; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-3); padding:0.625rem 0.875rem; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; background:var(--bg-2); }
-        .gp-tr { border-bottom:1px solid var(--border); transition:background 0.15s; }
-        .gp-tr:last-child { border-bottom:none; }
-        .gp-tr:hover { background:rgba(180,140,60,0.03); }
-        .gp-td { padding:0.625rem 0.875rem; font-size:0.78rem; color:var(--text-2); vertical-align:middle; }
-        .gp-avatar { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.62rem; font-weight:600; flex-shrink:0; }
-        .gp-status { font-size:0.6rem; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; padding:0.18rem 0.5rem; border-radius:99px; white-space:nowrap; border:1px solid transparent; }
-        .gp-tier { font-size:0.6rem; font-weight:500; padding:0.15rem 0.5rem; border-radius:99px; white-space:nowrap; border:1px solid; display:inline-flex; align-items:center; gap:0.25rem; }
-        .gp-tier-dot { width:4px; height:4px; border-radius:50%; flex-shrink:0; }
-        .gp-checkin { display:flex; align-items:center; gap:0.35rem; font-size:0.72rem; }
+        /* ── List toolbar ── */
+        .gp-list-toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.625rem; flex-wrap:wrap; gap:0.5rem; }
+        .gp-count { font-size:0.7rem; color:var(--text-3); }
+        .gp-collapse-btns { display:flex; gap:0.375rem; }
+        .gp-collapse-btn { font-size:0.65rem; color:var(--text-3); background:transparent; border:1px solid var(--border); border-radius:4px; padding:0.25rem 0.6rem; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; }
+        .gp-collapse-btn:hover { border-color:var(--gold); color:var(--gold); }
+
+        /* ── Column header ── */
+        .gp-col-header { display:grid; grid-template-columns:1fr 110px 110px 130px 80px 80px; gap:0.5rem; padding:0.4rem 1rem; border:1px solid var(--border); border-bottom:none; border-radius:6px 6px 0 0; background:var(--bg-2); margin-bottom:0; }
+        .gp-col-header span { font-size:0.55rem; font-weight:500; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-3); }
+        @media(max-width:900px) { .gp-col-header { grid-template-columns:1fr 110px 110px 80px; } }
+        @media(max-width:640px) { .gp-col-header { grid-template-columns:1fr 90px 70px; } }
+        @media(max-width:420px) { .gp-col-header { display:none; } }
+
+        /* ── Tier group ── */
+        .gp-tier-group { border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:0.5rem; }
+        .gp-tier-header { width:100%; display:flex; align-items:center; justify-content:space-between; padding:0.7rem 1rem; background:var(--bg-2); border:none; cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s; }
+        .gp-tier-header:hover { background:rgba(180,140,60,0.05); }
+        .gp-tier-swatch { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+        .gp-tier-label { font-size:0.8rem; font-weight:500; color:var(--text); }
+        .gp-tier-pill { font-size:0.58rem; font-weight:500; letter-spacing:0.04em; padding:0.15rem 0.45rem; border-radius:99px; border:1px solid var(--border); color:var(--text-3); background:var(--bg-3); }
+        .gp-tier-chevron { font-size:0.7rem; color:var(--text-3); transition:transform 0.2s ease; flex-shrink:0; line-height:1; }
+
+        /* ── Guest rows ── */
+        .gp-tier-rows { background:var(--bg); }
+        .gp-row { display:grid; grid-template-columns:1fr 110px 110px 130px 80px 80px; gap:0.5rem; padding:0.6rem 1rem; border-top:1px solid var(--border); align-items:center; transition:background 0.12s; }
+        .gp-row:hover { background:rgba(180,140,60,0.025); }
+        @media(max-width:900px) { .gp-row { grid-template-columns:1fr 110px 110px 80px; } }
+        @media(max-width:640px) { .gp-row { grid-template-columns:1fr 90px 70px; } }
+        @media(max-width:420px) { .gp-row { grid-template-columns:1fr 70px; } }
+
+        @media(max-width:900px) { .gp-hide-lg { display:none !important; } }
+        @media(max-width:640px) { .gp-hide-md { display:none !important; } }
+        @media(max-width:420px) { .gp-hide-sm { display:none !important; } }
+
+        .gp-row-guest { display:flex; align-items:center; gap:0.5rem; min-width:0; }
+        .gp-avatar { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.58rem; font-weight:600; flex-shrink:0; }
+        .gp-row-info { min-width:0; }
+        .gp-row-name { font-size:0.78rem; font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:0.3rem; }
+        .gp-row-sub  { font-size:0.63rem; color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .gp-row-cell { font-size:0.72rem; }
+        .gp-status { font-size:0.58rem; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; padding:0.15rem 0.45rem; border-radius:99px; white-space:nowrap; border:1px solid transparent; display:inline-block; }
+        .gp-checkin { display:flex; align-items:center; gap:0.35rem; font-size:0.7rem; }
         .gp-checkin-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
-        .gp-flag { font-size:0.58rem; font-weight:500; padding:0.12rem 0.4rem; border-radius:99px; background:rgba(239,68,68,0.12); color:#ef4444; border:1px solid rgba(239,68,68,0.25); }
-
-        @media(max-width:639px) { .gp-desktop-table { display:none; } }
-        @media(min-width:640px) { .gp-mobile-cards  { display:none; } }
-
-        /* ── Mobile cards ── */
-        .gp-cards { display:flex; flex-direction:column; gap:0.625rem; }
-        .gp-card { background:var(--bg-2); border:1px solid var(--border); border-radius:8px; padding:0.875rem; }
-        .gp-card-top { display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem; }
-        .gp-card-name { font-size:0.875rem; font-weight:500; color:var(--text); line-height:1.2; }
-        .gp-card-phone { font-size:0.7rem; color:var(--text-3); margin-top:0.1rem; }
-        .gp-card-body { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 0.75rem; }
-        .gp-card-field-label { font-size:0.55rem; color:var(--text-3); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.2rem; }
-        .gp-card-actions { display:flex; justify-content:flex-end; margin-top:0.75rem; padding-top:0.625rem; border-top:1px solid var(--border); }
-
-        /* ── Banners ── */
-        .gp-banner { padding:0.75rem 1rem; margin-bottom:1rem; font-size:0.78rem; border-radius:5px; display:flex; align-items:flex-start; gap:0.5rem; }
-        .gp-banner-ok   { background:rgba(34,197,94,0.08);  border:1px solid rgba(34,197,94,0.25);  color:#22c55e; }
-        .gp-banner-err  { background:rgba(239,68,68,0.08);  border:1px solid rgba(239,68,68,0.25);  color:#ef4444; }
-        .gp-banner-info { background:rgba(180,140,60,0.08); border:1px solid rgba(180,140,60,0.25); color:#b48c3c; }
+        .gp-flag { font-size:0.52rem; font-weight:500; padding:0.1rem 0.3rem; border-radius:99px; background:rgba(239,68,68,0.12); color:#ef4444; border:1px solid rgba(239,68,68,0.25); }
 
         /* ── Invite bar ── */
         .gp-invite-bar { background:rgba(180,140,60,0.06); border:1px solid rgba(180,140,60,0.2); padding:0.875rem 1rem; margin-bottom:1.25rem; border-radius:5px; display:flex; align-items:center; justify-content:space-between; gap:0.75rem; flex-wrap:wrap; }
         .gp-invite-bar-text { font-size:0.78rem; color:rgba(180,140,60,0.85); line-height:1.5; flex:1; min-width:0; }
         .gp-invite-bar-text strong { display:block; color:#b48c3c; font-weight:500; margin-bottom:0.1rem; font-size:0.8rem; }
+
+        /* ── Banners ── */
+        .gp-banner { padding:0.75rem 1rem; margin-bottom:1rem; font-size:0.78rem; border-radius:5px; }
+        .gp-banner-ok  { background:rgba(34,197,94,0.08);  border:1px solid rgba(34,197,94,0.25);  color:#22c55e; }
+        .gp-banner-err { background:rgba(239,68,68,0.08);  border:1px solid rgba(239,68,68,0.25);  color:#ef4444; }
+
+        /* ── Empty ── */
+        .gp-empty { padding:3rem 1.5rem; text-align:center; }
+        .gp-empty-icon { font-size:2.25rem; margin-bottom:0.875rem; opacity:0.4; }
+        .gp-empty-title { font-size:0.9rem; color:var(--text-2); margin-bottom:0.5rem; }
+        .gp-empty-sub { font-size:0.75rem; color:var(--text-3); line-height:1.6; }
 
         /* ── Forms ── */
         .gp-form-card { background:var(--bg-2); border:1px solid var(--border); padding:1.25rem; border-radius:5px; max-width:560px; }
@@ -343,7 +465,7 @@ export default function GuestsPage() {
         .gp-field { margin-bottom:1rem; }
         .gp-label { display:block; font-size:0.7rem; font-weight:500; color:var(--text-2); letter-spacing:0.03em; margin-bottom:0.35rem; }
         .gp-req { color:var(--gold); margin-left:2px; }
-        .gp-input, .gp-sel { width:100%; padding:0.55rem 0.75rem; background:var(--bg-3); border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.8rem; outline:none; box-sizing:border-box; transition:border-color 0.15s; }
+        .gp-input, .gp-sel { width:100%; padding:0.55rem 0.75rem; background:var(--bg-3); border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.8rem; outline:none; transition:border-color 0.15s; }
         .gp-input:focus, .gp-sel:focus { border-color:var(--gold); }
         .gp-sel option { background:var(--bg-2); }
         .gp-row2 { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
@@ -364,16 +486,8 @@ export default function GuestsPage() {
         .gp-preview-table th { font-size:0.58rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-3); padding:0.45rem 0.625rem; text-align:left; border-bottom:1px solid var(--border); }
         .gp-preview-table td { padding:0.4rem 0.625rem; color:var(--text-2); border-bottom:1px solid var(--border); }
         .gp-preview-table tr:last-child td { border-bottom:none; }
-        .gp-sheets-input { width:100%; padding:0.55rem 0.75rem; background:var(--bg-3); border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.8rem; outline:none; box-sizing:border-box; margin-bottom:0.75rem; }
+        .gp-sheets-input { width:100%; padding:0.55rem 0.75rem; background:var(--bg-3); border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.8rem; outline:none; margin-bottom:0.75rem; }
         .gp-sheets-input:focus { border-color:var(--gold); }
-
-        /* ── Empty ── */
-        .gp-empty { padding:3rem 1.5rem; text-align:center; }
-        .gp-empty-icon { font-size:2.25rem; margin-bottom:0.875rem; opacity:0.4; }
-        .gp-empty-title { font-size:0.9rem; color:var(--text-2); margin-bottom:0.5rem; }
-        .gp-empty-sub { font-size:0.75rem; color:var(--text-3); line-height:1.6; }
-
-        .gp-count { font-size:0.7rem; color:var(--text-3); margin-bottom:0.75rem; }
       `}</style>
 
       <div className="gp">
@@ -413,11 +527,11 @@ export default function GuestsPage() {
         {/* Stats */}
         <div className="gp-stats">
           {[
-            { num: stats.total,     label: "Total"      },
-            { num: stats.confirmed, label: "Confirmed"  },
-            { num: stats.pending,   label: "Pending"    },
-            { num: stats.checkedIn, label: "Checked In" },
-            { num: stats.notSent,   label: "Not Sent"   },
+            { num:stats.total,     label:"Total"      },
+            { num:stats.confirmed, label:"Confirmed"  },
+            { num:stats.pending,   label:"Pending"    },
+            { num:stats.checkedIn, label:"Checked In" },
+            { num:stats.notSent,   label:"Not Sent"   },
           ].map(s => (
             <div className="gp-stat" key={s.label}>
               <div className="gp-stat-num">{s.num}</div>
@@ -426,7 +540,7 @@ export default function GuestsPage() {
           ))}
         </div>
 
-        {/* Invite bar — shown whenever there are unsent guests */}
+        {/* Invite bar */}
         {event.inviteModel === "CLOSED" && stats.notSent > 0 && activeTab === "list" && (
           <div className="gp-invite-bar">
             <div className="gp-invite-bar-text">
@@ -448,15 +562,15 @@ export default function GuestsPage() {
             }
           </div>
         )}
-        {addSuccess       && <div className="gp-banner gp-banner-ok">✓ Guest added successfully</div>}
+        {addSuccess        && <div className="gp-banner gp-banner-ok">✓ Guest added successfully</div>}
         {importSuccess > 0 && <div className="gp-banner gp-banner-ok">✓ {importSuccess} guest{importSuccess > 1 ? "s" : ""} imported</div>}
 
         {/* Tabs */}
         <div className="gp-tabs">
           {[
-            { key: "list",   label: `Guest List (${guests.length})` },
-            { key: "add",    label: "Add Manually" },
-            { key: "import", label: "Import"       },
+            { key:"list",   label:`Guest List (${guests.length})` },
+            { key:"add",    label:"Add Manually" },
+            { key:"import", label:"Import"       },
           ].map(t => (
             <button key={t.key} className={`gp-tab${activeTab === t.key ? " active" : ""}`} onClick={() => setActiveTab(t.key as ActiveTab)}>
               {t.label}
@@ -481,10 +595,6 @@ export default function GuestsPage() {
               )}
             </div>
 
-            {filtered.length > 0 && (
-              <div className="gp-count">{filtered.length} guest{filtered.length > 1 ? "s" : ""}{search || filterStatus !== "ALL" || filterTier !== "ALL" ? " matching filters" : ""}</div>
-            )}
-
             {filtered.length === 0 ? (
               <div className="gp-empty">
                 <div className="gp-empty-icon">👥</div>
@@ -500,134 +610,33 @@ export default function GuestsPage() {
               </div>
             ) : (
               <>
-                {/* ── DESKTOP TABLE ── */}
-                <div className="gp-table-wrap gp-desktop-table">
-                  <div style={{ overflowX:"auto" }}>
-                    <table className="gp-table">
-                      <thead>
-                        <tr>
-                          <th className="gp-th">Guest</th>
-                          <th className="gp-th">Tier</th>
-                          <th className="gp-th">RSVP</th>
-                          <th className="gp-th">Check-in</th>
-                          <th className="gp-th">Invite Sent</th>
-                          <th className="gp-th">Table</th>
-                          <th className="gp-th"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filtered.map(g => {
-                          const rsvp     = RSVP_CONFIG[g.rsvpStatus]
-                          const color    = g.tier?.color ?? "#b48c3c"
-                          const fullName = `${g.firstName} ${g.lastName}`
-                          return (
-                            <tr className="gp-tr" key={g.id}>
-                              <td className="gp-td">
-                                <div style={{ display:"flex", alignItems:"center", gap:"0.625rem" }}>
-                                  <div className="gp-avatar" style={{ background:color+"33", border:`1.5px solid ${color}55`, color, width:30, height:30 }}>
-                                    {initials(g.firstName, g.lastName)}
-                                  </div>
-                                  <div>
-                                    <div style={{ fontWeight:500, color:"var(--text)", fontSize:"0.8rem" }}>{fullName}</div>
-                                    <div style={{ fontSize:"0.66rem", color:"var(--text-3)" }}>{g.phone ?? g.email ?? "—"}</div>
-                                  </div>
-                                  {g.isFlagged && <span className="gp-flag">⚠</span>}
-                                </div>
-                              </td>
-                              <td className="gp-td">
-                                {g.tier
-                                  ? <span className="gp-tier" style={{ color, borderColor:color+"55", background:color+"18" }}><span className="gp-tier-dot" style={{ background:color }} />{g.tier.name}</span>
-                                  : <span style={{ fontSize:"0.7rem", color:"var(--text-3)" }}>—</span>
-                                }
-                              </td>
-                              <td className="gp-td">
-                                <span className="gp-status" style={{ color:rsvp.color, background:rsvp.bg, borderColor:rsvp.color+"44" }}>{rsvp.label}</span>
-                                {g.rsvpAt && <div style={{ fontSize:"0.63rem", color:"var(--text-3)", marginTop:"0.15rem" }}>{fmtDate(g.rsvpAt)}</div>}
-                              </td>
-                              <td className="gp-td">
-                                <div className="gp-checkin">
-                                  <div className="gp-checkin-dot" style={{ background:g.checkedIn ? "#22c55e" : "var(--border)" }} />
-                                  <span style={{ color:g.checkedIn ? "#22c55e" : "var(--text-3)", fontSize:"0.72rem" }}>
-                                    {g.checkedIn ? `In · ${fmtTime(g.checkedInAt)}` : "Not yet"}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="gp-td">
-                                {g.inviteSentAt
-                                  ? <span style={{ fontSize:"0.7rem", color:"#22c55e" }}>✓ {fmtDate(g.inviteSentAt)}</span>
-                                  : <span style={{ fontSize:"0.7rem", color:"var(--text-3)" }}>Not sent</span>
-                                }
-                              </td>
-                              <td className="gp-td"><span style={{ fontSize:"0.72rem", color:"var(--text-3)" }}>{g.tableNumber ?? "—"}</span></td>
-                              <td className="gp-td">
-                                <button className="gp-btn gp-btn-danger" onClick={() => handleDelete(g.id, fullName)} disabled={deletingId === g.id}>
-                                  {deletingId === g.id ? "…" : "Remove"}
-                                </button>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                {/* Toolbar */}
+                <div className="gp-list-toolbar">
+                  <span className="gp-count">
+                    {filtered.length} guest{filtered.length > 1 ? "s" : ""}
+                    {(search || filterStatus !== "ALL" || filterTier !== "ALL") ? " matching filters" : ""}
+                  </span>
+                  {groupedGuests.length > 1 && (
+                    <div className="gp-collapse-btns">
+                      <button className="gp-collapse-btn" onClick={() => setCollapsedGroups(new Set())}>Expand all</button>
+                      <button className="gp-collapse-btn" onClick={() => setCollapsedGroups(new Set(groupedGuests.map(g => g.label)))}>Collapse all</button>
+                    </div>
+                  )}
                 </div>
 
-                {/* ── MOBILE CARDS ── */}
-                <div className="gp-cards gp-mobile-cards">
-                  {filtered.map(g => {
-                    const rsvp     = RSVP_CONFIG[g.rsvpStatus]
-                    const color    = g.tier?.color ?? "#b48c3c"
-                    const fullName = `${g.firstName} ${g.lastName}`
-                    return (
-                      <div className="gp-card" key={g.id}>
-                        <div className="gp-card-top">
-                          <div className="gp-avatar" style={{ background:color+"33", border:`1.5px solid ${color}55`, color, width:36, height:36, fontSize:"0.7rem", fontWeight:600, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                            {initials(g.firstName, g.lastName)}
-                          </div>
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <div className="gp-card-name">{fullName} {g.isFlagged && <span className="gp-flag">⚠</span>}</div>
-                            <div className="gp-card-phone">{g.phone ?? g.email ?? "No contact"}</div>
-                          </div>
-                          <span className="gp-status" style={{ color:rsvp.color, background:rsvp.bg, borderColor:rsvp.color+"44", flexShrink:0 }}>{rsvp.label}</span>
-                        </div>
-                        <div className="gp-card-body">
-                          <div>
-                            <div className="gp-card-field-label">Tier</div>
-                            {g.tier
-                              ? <span className="gp-tier" style={{ color, borderColor:color+"55", background:color+"18" }}><span className="gp-tier-dot" style={{ background:color }} />{g.tier.name}</span>
-                              : <span style={{ fontSize:"0.72rem", color:"var(--text-3)" }}>—</span>
-                            }
-                          </div>
-                          <div>
-                            <div className="gp-card-field-label">Check-in</div>
-                            <div className="gp-checkin">
-                              <div className="gp-checkin-dot" style={{ background:g.checkedIn ? "#22c55e" : "var(--border)" }} />
-                              <span style={{ color:g.checkedIn ? "#22c55e" : "var(--text-3)", fontSize:"0.72rem" }}>
-                                {g.checkedIn ? "Checked in" : "Not yet"}
-                              </span>
-                            </div>
-                          </div>
-                          <div>
-                            <div className="gp-card-field-label">Invite</div>
-                            {g.inviteSentAt
-                              ? <span style={{ fontSize:"0.72rem", color:"#22c55e" }}>✓ Sent</span>
-                              : <span style={{ fontSize:"0.72rem", color:"var(--text-3)" }}>Not sent</span>
-                            }
-                          </div>
-                          <div>
-                            <div className="gp-card-field-label">Table</div>
-                            <span style={{ fontSize:"0.72rem", color:"var(--text-3)" }}>{g.tableNumber ?? "—"}</span>
-                          </div>
-                        </div>
-                        <div className="gp-card-actions">
-                          <button className="gp-btn gp-btn-danger" onClick={() => handleDelete(g.id, fullName)} disabled={deletingId === g.id}>
-                            {deletingId === g.id ? "Removing…" : "Remove"}
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                {/* Tier groups */}
+                {groupedGuests.map(group => (
+                  <TierGroup
+                    key={group.label}
+                    label={group.label}
+                    color={group.color}
+                    guests={group.guests}
+                    isCollapsed={collapsedGroups.has(group.label)}
+                    onToggle={() => toggleGroup(group.label)}
+                    deletingId={deletingId}
+                    handleDelete={handleDelete}
+                  />
+                ))}
               </>
             )}
           </>
@@ -740,7 +749,6 @@ export default function GuestsPage() {
             )}
           </div>
         )}
-
       </div>
     </>
   )
