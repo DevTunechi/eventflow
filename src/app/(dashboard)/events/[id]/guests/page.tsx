@@ -7,7 +7,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import WhatsAppSetupModal from "@/components/WhatsAppSetupModal"
 
 interface GuestTier { id: string; name: string; color: string | null }
 
@@ -84,23 +83,18 @@ export default function GuestsPage() {
   const [sendResult, setSendResult] = useState<{ sent: number; failed: number; errors?: string[] } | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const [waConnected, setWaConnected] = useState<boolean | null>(null)
-  const [showWAModal, setShowWAModal] = useState(false)
-
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
       const hdrs = getAuthHeaders()
-      const [evRes, gRes, waRes] = await Promise.all([
+      const [evRes, gRes] = await Promise.all([
         fetch(`/api/events/${id}`,        { headers: hdrs }),
         fetch(`/api/events/${id}/guests`, { headers: hdrs }),
-        fetch(`/api/whatsapp/status`,     { headers: hdrs }),
       ])
       if (!evRes.ok) throw new Error("Failed to load event")
       const evData = await evRes.json()
       setEvent({ ...evData.event, guestTiers: evData.event.guestTiers ?? [] })
       if (gRes.ok) { const gData = await gRes.json(); setGuests(Array.isArray(gData) ? gData : []) }
-      if (waRes.ok) { const waData = await waRes.json(); setWaConnected(waData.connected ?? false) }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load")
     } finally { setLoading(false) }
@@ -199,7 +193,6 @@ export default function GuestsPage() {
   const handleSendInvites = async () => {
     const unsent = guests.filter(g => !g.inviteSentAt)
     if (!unsent.length) return
-    if (!waConnected) { setShowWAModal(true); return }
     if (!confirm(`Send WhatsApp invites to ${unsent.length} guest${unsent.length > 1 ? "s" : ""}?`)) return
     setSending(true); setSendResult(null)
     try {
@@ -282,7 +275,7 @@ export default function GuestsPage() {
         .gp-sub { font-size:0.78rem; color:var(--text-3); display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; }
         .gp-model-badge { font-size:0.6rem; font-weight:500; letter-spacing:0.08em; text-transform:uppercase; padding:0.2rem 0.6rem; border-radius:99px; border:1px solid; }
 
-        /* ── Stats — 2 cols on mobile, 5 on desktop ── */
+        /* ── Stats ── */
         .gp-stats { display:grid; grid-template-columns:repeat(2,1fr); gap:0.5rem; margin-bottom:1.5rem; }
         @media(min-width:480px) { .gp-stats { grid-template-columns:repeat(3,1fr); } }
         @media(min-width:700px) { .gp-stats { grid-template-columns:repeat(5,1fr); } }
@@ -304,7 +297,7 @@ export default function GuestsPage() {
         .gp-select { padding:0.525rem 0.625rem; background:var(--bg-2); border:1px solid var(--border); color:var(--text-2); font-family:'DM Sans',sans-serif; font-size:0.75rem; outline:none; border-radius:5px; cursor:pointer; max-width:130px; }
         .gp-select:focus { border-color:var(--gold); }
 
-        /* ── DESKTOP TABLE ── */
+        /* ── Desktop table ── */
         .gp-table-wrap { background:var(--bg-2); border:1px solid var(--border); overflow:hidden; border-radius:5px; }
         .gp-table { width:100%; border-collapse:collapse; }
         .gp-th { font-size:0.58rem; font-weight:500; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-3); padding:0.625rem 0.875rem; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; background:var(--bg-2); }
@@ -320,18 +313,16 @@ export default function GuestsPage() {
         .gp-checkin-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
         .gp-flag { font-size:0.58rem; font-weight:500; padding:0.12rem 0.4rem; border-radius:99px; background:rgba(239,68,68,0.12); color:#ef4444; border:1px solid rgba(239,68,68,0.25); }
 
-        /* Hide desktop table on mobile */
         @media(max-width:639px) { .gp-desktop-table { display:none; } }
         @media(min-width:640px) { .gp-mobile-cards  { display:none; } }
 
-        /* ── MOBILE CARDS ── */
+        /* ── Mobile cards ── */
         .gp-cards { display:flex; flex-direction:column; gap:0.625rem; }
         .gp-card { background:var(--bg-2); border:1px solid var(--border); border-radius:8px; padding:0.875rem; }
         .gp-card-top { display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem; }
         .gp-card-name { font-size:0.875rem; font-weight:500; color:var(--text); line-height:1.2; }
         .gp-card-phone { font-size:0.7rem; color:var(--text-3); margin-top:0.1rem; }
         .gp-card-body { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 0.75rem; }
-        .gp-card-field { }
         .gp-card-field-label { font-size:0.55rem; color:var(--text-3); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.2rem; }
         .gp-card-actions { display:flex; justify-content:flex-end; margin-top:0.75rem; padding-top:0.625rem; border-top:1px solid var(--border); }
 
@@ -345,13 +336,6 @@ export default function GuestsPage() {
         .gp-invite-bar { background:rgba(180,140,60,0.06); border:1px solid rgba(180,140,60,0.2); padding:0.875rem 1rem; margin-bottom:1.25rem; border-radius:5px; display:flex; align-items:center; justify-content:space-between; gap:0.75rem; flex-wrap:wrap; }
         .gp-invite-bar-text { font-size:0.78rem; color:rgba(180,140,60,0.85); line-height:1.5; flex:1; min-width:0; }
         .gp-invite-bar-text strong { display:block; color:#b48c3c; font-weight:500; margin-bottom:0.1rem; font-size:0.8rem; }
-
-        /* ── WA nudge ── */
-        .gp-wa-nudge { background:rgba(37,211,102,0.05); border:1px solid rgba(37,211,102,0.2); padding:0.875rem 1rem; margin-bottom:1.25rem; border-radius:5px; display:flex; align-items:center; justify-content:space-between; gap:0.75rem; flex-wrap:wrap; }
-        .gp-wa-nudge-text { font-size:0.78rem; color:rgba(37,211,102,0.85); line-height:1.5; flex:1; min-width:0; }
-        .gp-wa-nudge-text strong { display:block; color:#25d366; font-weight:500; margin-bottom:0.1rem; }
-        .gp-wa-nudge-btn { padding:0.4rem 0.875rem; background:#25d366; color:#fff; font-family:'DM Sans',sans-serif; font-size:0.72rem; font-weight:500; border:none; border-radius:5px; cursor:pointer; white-space:nowrap; transition:background 0.2s; flex-shrink:0; }
-        .gp-wa-nudge-btn:hover { background:#1db954; }
 
         /* ── Forms ── */
         .gp-form-card { background:var(--bg-2); border:1px solid var(--border); padding:1.25rem; border-radius:5px; max-width:560px; }
@@ -442,19 +426,8 @@ export default function GuestsPage() {
           ))}
         </div>
 
-        {/* WA nudge */}
-        {waConnected === false && guests.length > 0 && activeTab === "list" && (
-          <div className="gp-wa-nudge">
-            <div className="gp-wa-nudge-text">
-              <strong>📲 Connect WhatsApp to send invites</strong>
-              Connect your WhatsApp Business number to send invites.
-            </div>
-            <button className="gp-wa-nudge-btn" onClick={() => setShowWAModal(true)}>Connect →</button>
-          </div>
-        )}
-
-        {/* Invite bar */}
-        {event.inviteModel === "CLOSED" && stats.notSent > 0 && activeTab === "list" && waConnected && (
+        {/* Invite bar — shown whenever there are unsent guests */}
+        {event.inviteModel === "CLOSED" && stats.notSent > 0 && activeTab === "list" && (
           <div className="gp-invite-bar">
             <div className="gp-invite-bar-text">
               <strong>{stats.notSent} guest{stats.notSent > 1 ? "s" : ""} haven&apos;t received their invite yet</strong>
@@ -475,7 +448,7 @@ export default function GuestsPage() {
             }
           </div>
         )}
-        {addSuccess    && <div className="gp-banner gp-banner-ok">✓ Guest added successfully</div>}
+        {addSuccess       && <div className="gp-banner gp-banner-ok">✓ Guest added successfully</div>}
         {importSuccess > 0 && <div className="gp-banner gp-banner-ok">✓ {importSuccess} guest{importSuccess > 1 ? "s" : ""} imported</div>}
 
         {/* Tabs */}
@@ -617,16 +590,15 @@ export default function GuestsPage() {
                           </div>
                           <span className="gp-status" style={{ color:rsvp.color, background:rsvp.bg, borderColor:rsvp.color+"44", flexShrink:0 }}>{rsvp.label}</span>
                         </div>
-
                         <div className="gp-card-body">
-                          <div className="gp-card-field">
+                          <div>
                             <div className="gp-card-field-label">Tier</div>
                             {g.tier
                               ? <span className="gp-tier" style={{ color, borderColor:color+"55", background:color+"18" }}><span className="gp-tier-dot" style={{ background:color }} />{g.tier.name}</span>
                               : <span style={{ fontSize:"0.72rem", color:"var(--text-3)" }}>—</span>
                             }
                           </div>
-                          <div className="gp-card-field">
+                          <div>
                             <div className="gp-card-field-label">Check-in</div>
                             <div className="gp-checkin">
                               <div className="gp-checkin-dot" style={{ background:g.checkedIn ? "#22c55e" : "var(--border)" }} />
@@ -635,19 +607,18 @@ export default function GuestsPage() {
                               </span>
                             </div>
                           </div>
-                          <div className="gp-card-field">
+                          <div>
                             <div className="gp-card-field-label">Invite</div>
                             {g.inviteSentAt
                               ? <span style={{ fontSize:"0.72rem", color:"#22c55e" }}>✓ Sent</span>
                               : <span style={{ fontSize:"0.72rem", color:"var(--text-3)" }}>Not sent</span>
                             }
                           </div>
-                          <div className="gp-card-field">
+                          <div>
                             <div className="gp-card-field-label">Table</div>
                             <span style={{ fontSize:"0.72rem", color:"var(--text-3)" }}>{g.tableNumber ?? "—"}</span>
                           </div>
                         </div>
-
                         <div className="gp-card-actions">
                           <button className="gp-btn gp-btn-danger" onClick={() => handleDelete(g.id, fullName)} disabled={deletingId === g.id}>
                             {deletingId === g.id ? "Removing…" : "Remove"}
@@ -771,13 +742,6 @@ export default function GuestsPage() {
         )}
 
       </div>
-
-      {showWAModal && (
-        <WhatsAppSetupModal
-          onConnected={() => { setWaConnected(true); setShowWAModal(false) }}
-          onClose={() => setShowWAModal(false)}
-        />
-      )}
     </>
   )
 }
