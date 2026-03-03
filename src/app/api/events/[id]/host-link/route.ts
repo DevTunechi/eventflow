@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth-server"
-import { sendEmail, hostLinkEmailHtml } from "@/lib/resend"
+import { sendHostLinkEmail } from "@/lib/emails"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://eventflowng.vercel.app"
 
@@ -79,29 +79,27 @@ export async function POST(
     })
 
     // Send email if requested
-    let emailResult = { success: true }
-    if (resend) {
-      emailResult = await sendEmail({
-        to:      hostEmail.trim(),
-        subject: `Your host access for ${existing.name}`,
-        html:    hostLinkEmailHtml({
-          hostName:       hostName.trim(),
-          eventName:      existing.name,
-          eventDate,
-          venueName:      existing.venueName,
-          hostPortalLink: hostLink,
-          plannerName:    existing.planner.name ?? "Your planner",
-        }),
-      })
-    }
+    let emailSent = true
+if (resend) {
+  try {
+    await sendHostLinkEmail({
+      hostName:  hostName.trim(),
+      hostEmail: hostEmail.trim(),
+      eventName: existing.name,
+      hostLink,
+    })
+  } catch (e) {
+    console.error("host link email failed:", e)
+    emailSent = false
+  }
+}
 
     return NextResponse.json({
-      success:       true,
-      hostLink,
-      hostEmail:     hostEmail.trim(),
-      emailSent:     emailResult.success,
-      emailError:    emailResult.success ? null : (emailResult as any).error,
-    })
+  success:   true,
+  hostLink,
+  hostEmail: hostEmail.trim(),
+  emailSent,
+})
   } catch (error) {
     console.error("host-link POST error:", error)
     return NextResponse.json({ error: "Server error" }, { status: 500 })

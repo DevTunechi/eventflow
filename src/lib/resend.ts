@@ -2,6 +2,11 @@
 // Email sending via Resend
 // Swap FROM_EMAIL to your domain once verified
 
+import { Resend } from "resend"
+
+export const resend = new Resend(process.env.RESEND_API_KEY)
+
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? ""
 const FROM_EMAIL     = process.env.FROM_EMAIL ?? "EventFlow <onboarding@resend.dev>"
 const APP_URL        = process.env.NEXT_PUBLIC_APP_URL ?? "https://eventflowng.vercel.app"
