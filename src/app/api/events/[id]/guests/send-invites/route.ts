@@ -1,17 +1,18 @@
-// ─────────────────────────────────────────────
 // src/app/api/events/[id]/guests/send-invites/route.ts
+// POST — send invite links to guests via WhatsApp or Email
 //
-// POST — send WhatsApp invite messages to
-//        a list of guest IDs.
+// Body:
+//   { guestIds: string[], channel: "whatsapp" | "email" }
 //
-// Now wired to real Meta Cloud API via
-// /api/whatsapp/send internals.
-// ─────────────────────────────────────────────
+// channel defaults to "whatsapp" if omitted (backwards-compatible)
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth-server"
 import { decrypt, sendWhatsAppMessage } from "@/lib/whatsapp"
+import { sendEmail, inviteEmailHtml } from "@/lib/resend"
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://eventflowng.vercel.app"
 
 export async function POST(
   req: NextRequest,
@@ -26,6 +27,7 @@ export async function POST(
       where:  { email: session.email },
       select: {
         id:              true,
+        name:            true,
         waAccessToken:   true,
         waPhoneNumberId: true,
       },
@@ -33,95 +35,169 @@ export async function POST(
 
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 })
 
-    if (!user.waAccessToken || !user.waPhoneNumberId) {
-      return NextResponse.json(
-        { error: "WhatsApp not connected." },
-        { status: 400 }
-      )
-    }
-
     const event = await prisma.event.findFirst({
       where:  { id, plannerId: user.id },
-      select: { id: true, name: true, slug: true, inviteModel: true },
+      select: {
+        id: true, name: true, slug: true, inviteModel: true,
+        eventDate: true, startTime: true,
+        venueName: true, invitationCard: true, brandColor: true,
+      },
     })
     if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 })
 
     const body = await req.json()
-    const { guestIds }: { guestIds: string[] } = body
+    const { guestIds, channel = "whatsapp" }: { guestIds: string[]; channel?: "whatsapp" | "email" } = body
     if (!guestIds?.length) return NextResponse.json({ error: "No guest IDs provided" }, { status: 400 })
 
-    const guests = await prisma.guest.findMany({
-      where:  { id: { in: guestIds }, eventId: id },
-      select: { id: true, firstName: true, lastName: true, phone: true, inviteToken: true },
-    })
-
-    const baseUrl     = process.env.NEXT_PUBLIC_APP_URL ?? "https://eventflowng.vercel.app"
-    const accessToken = decrypt(user.waAccessToken)
-
-    // ── Debug: log decrypted token prefix and phoneNumberId ──
-    console.log("[send-invites] phoneNumberId:", user.waPhoneNumberId)
-    console.log("[send-invites] token prefix:", accessToken.slice(0, 10))
-
-    let sent    = 0
-    let failed  = 0
-    let noPhone = 0
-    const errors: string[] = []
-
-    for (const guest of guests) {
-      if (!guest.phone) { noPhone++; continue }
-
-      const inviteLink = event.inviteModel === "CLOSED" && guest.inviteToken
-        ? `${baseUrl}/rsvp/${event.slug}?invite=${guest.inviteToken}`
-        : `${baseUrl}/rsvp/${event.slug}`
-
-      const message = [
-        `Hello ${guest.firstName} 👋`,
-        ``,
-        `You're invited to *${event.name}*.`,
-        ``,
-        `Click the link below to RSVP and confirm your attendance:`,
-        inviteLink,
-        ``,
-        `We look forward to celebrating with you! 🎉`,
-      ].join("\n")
-
-      try {
-        const result = await sendWhatsAppMessage({
-          accessToken,
-          phoneNumberId: user.waPhoneNumberId,
-          to:            guest.phone,
-          message,
-          previewUrl:    false,
-        })
-
-        if (result.success) {
-          await prisma.guest.update({
-            where: { id: guest.id },
-            data:  { inviteSentAt: new Date(), inviteChannel: "WHATSAPP" },
-          })
-          sent++
-        } else {
-          console.error(`[send-invites] Failed for ${guest.phone}:`, result.error)
-          errors.push(result.error ?? "unknown")
-          failed++
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        console.error(`[send-invites] Exception for ${guest.id}:`, msg)
-        errors.push(msg)
-        failed++
+    // Validate channel-specific requirements up front
+    if (channel === "whatsapp") {
+      if (!user.waAccessToken || !user.waPhoneNumberId) {
+        return NextResponse.json(
+          { error: "WhatsApp not connected. Go to Settings to connect WhatsApp Business." },
+          { status: 400 }
+        )
       }
     }
 
-    if (sent > 0) {
-      await (prisma.user as any).update({
-        where: { id: user.id },
-        data:  { waMessagesSent: { increment: sent } },
-      })
+    const guests = await prisma.guest.findMany({
+      where:  { id: { in: guestIds }, eventId: id },
+      select: { id: true, firstName: true, lastName: true, phone: true, email: true, inviteToken: true },
+    })
+
+    const eventDate = new Date(event.eventDate).toLocaleDateString("en-NG", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    })
+
+    let sent    = 0
+    let failed  = 0
+    let skipped = 0
+    const errors: string[] = []
+
+    // ── WhatsApp path ─────────────────────────────────────
+    if (channel === "whatsapp") {
+      const accessToken = decrypt(user.waAccessToken)
+
+      console.log("[send-invites] channel: whatsapp")
+      console.log("[send-invites] phoneNumberId:", user.waPhoneNumberId)
+      console.log("[send-invites] token prefix:", accessToken.slice(0, 10))
+
+      for (const guest of guests) {
+        if (!guest.phone) {
+          skipped++
+          errors.push(`${guest.firstName} ${guest.lastName}: no phone number`)
+          continue
+        }
+
+        const inviteLink = event.inviteModel === "CLOSED" && guest.inviteToken
+          ? `${APP_URL}/rsvp/${event.slug}?invite=${guest.inviteToken}`
+          : `${APP_URL}/rsvp/${event.slug}`
+
+        const message = [
+          `Hello ${guest.firstName} 👋`,
+          ``,
+          `You're invited to *${event.name}*.`,
+          ``,
+          `Click the link below to RSVP and confirm your attendance:`,
+          inviteLink,
+          ``,
+          `We look forward to celebrating with you! 🎉`,
+        ].join("\n")
+
+        try {
+          const result = await sendWhatsAppMessage({
+            accessToken,
+            phoneNumberId: user.waPhoneNumberId,
+            to:            guest.phone,
+            message,
+            previewUrl:    false,
+          })
+
+          if (result.success) {
+            await prisma.guest.update({
+              where: { id: guest.id },
+              data:  { inviteSentAt: new Date(), inviteChannel: "WHATSAPP" },
+            })
+            sent++
+          } else {
+            console.error(`[send-invites] WA failed for ${guest.phone}:`, result.error)
+            errors.push(`${guest.firstName}: ${result.error ?? "unknown"}`)
+            failed++
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          console.error(`[send-invites] WA exception for ${guest.id}:`, msg)
+          errors.push(`${guest.firstName}: ${msg}`)
+          failed++
+        }
+      }
+
+      // Increment planner's WA message counter
+      if (sent > 0) {
+        await (prisma.user as any).update({
+          where: { id: user.id },
+          data:  { waMessagesSent: { increment: sent } },
+        })
+      }
     }
 
-    // Return errors array so we can see what Meta said
-    return NextResponse.json({ sent, failed, noPhone, errors })
+    // ── Email path ────────────────────────────────────────
+    if (channel === "email") {
+      console.log("[send-invites] channel: email")
+
+      for (const guest of guests) {
+        if (!guest.email) {
+          skipped++
+          errors.push(`${guest.firstName} ${guest.lastName}: no email address`)
+          continue
+        }
+
+        const inviteLink = event.inviteModel === "CLOSED" && guest.inviteToken
+          ? `${APP_URL}/rsvp/${event.slug}?invite=${guest.inviteToken}`
+          : `${APP_URL}/rsvp/${event.slug}`
+
+        const html = inviteEmailHtml({
+          guestName:      `${guest.firstName} ${guest.lastName}`,
+          eventName:      event.name,
+          eventDate,
+          venueName:      event.venueName,
+          inviteLink,
+          invitationCard: event.invitationCard,
+          brandColor:     event.brandColor,
+        })
+
+        try {
+          const result = await sendEmail({
+            to:      guest.email,
+            subject: `You're invited to ${event.name}`,
+            html,
+          })
+
+          if (result.success) {
+            await prisma.guest.update({
+              where: { id: guest.id },
+              data:  { inviteSentAt: new Date(), inviteChannel: "EMAIL" },
+            })
+            sent++
+          } else {
+            console.error(`[send-invites] Email failed for ${guest.email}:`, result.error)
+            errors.push(`${guest.firstName}: ${result.error ?? "unknown"}`)
+            failed++
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          console.error(`[send-invites] Email exception for ${guest.id}:`, msg)
+          errors.push(`${guest.firstName}: ${msg}`)
+          failed++
+        }
+      }
+    }
+
+    return NextResponse.json({
+      sent,
+      failed,
+      skipped,
+      errors: errors.length ? errors : undefined,
+    })
 
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)

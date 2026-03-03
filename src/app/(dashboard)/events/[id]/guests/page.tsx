@@ -2,6 +2,7 @@
 
 // src/app/(dashboard)/events/[id]/guests/page.tsx
 // Capacity warnings: venue, tables, per-tier
+// Added: email field, email invite option, per-guest Send Link for CLOSED events
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams } from "next/navigation"
@@ -20,7 +21,8 @@ interface Guest {
   phone: string | null; email: string | null
   rsvpStatus: RSVPStatus; rsvpAt: string | null
   checkedIn: boolean; checkedInAt: string | null
-  inviteSentAt: string | null; isFlagged: boolean
+  inviteSentAt: string | null; inviteToken: string | null
+  isFlagged: boolean
   tier: { id: string; name: string; color: string | null } | null
   tableNumber: string | null; createdAt: string
 }
@@ -32,9 +34,12 @@ interface EventSummary {
   _count: { guests: number }
 }
 
-type RSVPStatus = "PENDING" | "CONFIRMED" | "DECLINED" | "WAITLISTED" | "NO_SHOW"
-type ActiveTab  = "list" | "add" | "import"
-type ImportType = "csv" | "sheets"
+type RSVPStatus  = "PENDING" | "CONFIRMED" | "DECLINED" | "WAITLISTED" | "NO_SHOW"
+type ActiveTab   = "list" | "add" | "import"
+type ImportType  = "csv" | "sheets"
+type InviteChannel = "whatsapp" | "email"
+
+const APP_URL = typeof window !== "undefined" ? window.location.origin : ""
 
 const RSVP_CONFIG: Record<RSVPStatus, { label: string; color: string; bg: string }> = {
   PENDING:    { label: "Pending",    color: "#f59e0b", bg: "rgba(245,158,11,0.12)"  },
@@ -75,9 +80,11 @@ function CapacityBar({ label, current, limit, color = "#b48c3c" }: { label: stri
 }
 
 // ── Tier group ────────────────────────────────
-function TierGroup({ label, color, guests, isCollapsed, onToggle, deletingId, handleDelete }: {
+function TierGroup({ label, color, guests, isCollapsed, onToggle, deletingId, handleDelete, inviteModel, sendingGuestId, handleSendGuestLink }: {
   label: string; color: string; guests: Guest[]; isCollapsed: boolean
   onToggle: () => void; deletingId: string | null; handleDelete: (id: string, name: string) => void
+  inviteModel: "OPEN" | "CLOSED"; sendingGuestId: string | null
+  handleSendGuestLink: (guest: Guest) => void
 }) {
   const confirmed = guests.filter(g => g.rsvpStatus === "CONFIRMED").length
   return (
@@ -94,6 +101,7 @@ function TierGroup({ label, color, guests, isCollapsed, onToggle, deletingId, ha
       {!isCollapsed && guests.map(g => {
         const rsvp = RSVP_CONFIG[g.rsvpStatus]
         const name = `${g.firstName} ${g.lastName}`
+        const canSendLink = inviteModel === "CLOSED" && !g.inviteSentAt && g.inviteToken && (g.email || g.phone)
         return (
           <div className="gp-row" key={g.id}>
             <div className="gp-row-guest">
@@ -116,7 +124,14 @@ function TierGroup({ label, color, guests, isCollapsed, onToggle, deletingId, ha
               </div>
             </div>
             <div className="gp-row-cell gp-hide-md">
-              {g.inviteSentAt ? <span style={{ fontSize:"0.7rem", color:"#22c55e" }}>✓ {fmtDate(g.inviteSentAt)}</span> : <span style={{ fontSize:"0.7rem", color:"var(--text-3)" }}>Not sent</span>}
+              {g.inviteSentAt
+                ? <span style={{ fontSize:"0.7rem", color:"#22c55e" }}>✓ {fmtDate(g.inviteSentAt)}</span>
+                : canSendLink
+                  ? <button className="gp-btn-send-link" onClick={() => handleSendGuestLink(g)} disabled={sendingGuestId === g.id}>
+                      {sendingGuestId === g.id ? "…" : g.email ? "✉ Send" : "📲 Send"}
+                    </button>
+                  : <span style={{ fontSize:"0.7rem", color:"var(--text-3)" }}>Not sent</span>
+              }
             </div>
             <div className="gp-row-cell gp-hide-lg"><span style={{ fontSize:"0.72rem", color:"var(--text-3)" }}>{g.tableNumber ?? "—"}</span></div>
             <div style={{ textAlign:"right" }}>
@@ -142,7 +157,8 @@ export default function GuestsPage() {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const toggleGroup = (label: string) => setCollapsedGroups(prev => { const n = new Set(prev); n.has(label) ? n.delete(label) : n.add(label); return n })
 
-  const [addForm, setAddForm]       = useState({ firstName:"", lastName:"", phone:"", tierId:"" })
+  // Add form — now includes email
+  const [addForm, setAddForm]       = useState({ firstName:"", lastName:"", phone:"", email:"", tierId:"" })
   const [adding, setAdding]         = useState(false)
   const [addError, setAddError]     = useState("")
   const [addSuccess, setAddSuccess] = useState(false)
@@ -157,8 +173,14 @@ export default function GuestsPage() {
   const [importSuccess, setImportSuccess] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [sending, setSending]       = useState(false)
-  const [sendResult, setSendResult] = useState<{ sent: number; failed: number; errors?: string[] } | null>(null)
+  // Bulk invite channel toggle
+  const [inviteChannel, setInviteChannel] = useState<InviteChannel>("whatsapp")
+  const [sending, setSending]             = useState(false)
+  const [sendResult, setSendResult]       = useState<{ sent: number; failed: number; errors?: string[] } | null>(null)
+
+  // Per-guest send link
+  const [sendingGuestId, setSendingGuestId] = useState<string | null>(null)
+
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -190,14 +212,14 @@ export default function GuestsPage() {
   useEffect(() => { load() }, [load])
 
   // ── Capacity ──────────────────────────────────
-  const totalGuests  = guests.length
+  const totalGuests   = guests.length
   const venueCapacity = event?.venueCapacity ?? null
-  const tableSeats   = (event?.totalTables && event?.seatsPerTable) ? event.totalTables * event.seatsPerTable : null
-  const caps         = [venueCapacity, tableSeats].filter(Boolean) as number[]
-  const hardCap      = caps.length ? Math.min(...caps) : null
-  const isVenueFull  = venueCapacity !== null && totalGuests >= venueCapacity
-  const isTableFull  = tableSeats   !== null && totalGuests >= tableSeats
-  const isAtCapacity = isVenueFull || isTableFull
+  const tableSeats    = (event?.totalTables && event?.seatsPerTable) ? event.totalTables * event.seatsPerTable : null
+  const caps          = [venueCapacity, tableSeats].filter(Boolean) as number[]
+  const hardCap       = caps.length ? Math.min(...caps) : null
+  const isVenueFull   = venueCapacity !== null && totalGuests >= venueCapacity
+  const isTableFull   = tableSeats   !== null && totalGuests >= tableSeats
+  const isAtCapacity  = isVenueFull || isTableFull
 
   const getTierInfo = (tierId: string) => {
     if (!tierId) return null
@@ -212,7 +234,7 @@ export default function GuestsPage() {
   // ── Filter + group ────────────────────────────
   const filtered = guests.filter(g => {
     const n = `${g.firstName} ${g.lastName}`.toLowerCase()
-    return (!search || n.includes(search.toLowerCase()) || (g.phone??"").includes(search))
+    return (!search || n.includes(search.toLowerCase()) || (g.phone??"").includes(search) || (g.email??"").includes(search))
       && (filterStatus === "ALL" || g.rsvpStatus === filterStatus)
       && (filterTier   === "ALL" || g.tier?.id === filterTier)
   })
@@ -244,18 +266,62 @@ export default function GuestsPage() {
     setAdding(true); setAddError("")
     try {
       const res = await fetch(`/api/events/${id}/guests`, {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ firstName: addForm.firstName.trim(), lastName: addForm.lastName.trim(), phone: addForm.phone.trim() || null, tierId: addForm.tierId || null }),
+        body: JSON.stringify({
+          firstName: addForm.firstName.trim(),
+          lastName:  addForm.lastName.trim(),
+          phone:     addForm.phone.trim()  || null,
+          email:     addForm.email.trim()  || null,
+          tierId:    addForm.tierId        || null,
+        }),
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.detail ?? d.error ?? "Failed") }
       const { guest: g } = await res.json()
       setGuests(prev => [g, ...prev])
       setEvent(prev => prev ? { ...prev, _count: { guests: prev._count.guests + 1 } } : prev)
-      setAddForm({ firstName:"", lastName:"", phone:"", tierId:"" })
+      setAddForm({ firstName:"", lastName:"", phone:"", email:"", tierId:"" })
       setAddSuccess(true); setTimeout(() => setAddSuccess(false), 3000)
     } catch (e: unknown) { setAddError(e instanceof Error ? e.message : "Failed to add guest") }
     finally { setAdding(false) }
+  }
+
+  // ── Bulk send invites ─────────────────────────
+  const handleSendInvites = async () => {
+    const unsent = guests.filter(g => !g.inviteSentAt)
+    if (!unsent.length) return
+    const channelLabel = inviteChannel === "email" ? "email" : "WhatsApp"
+    if (!confirm(`Send ${channelLabel} invites to ${unsent.length} guest${unsent.length > 1 ? "s" : ""}?`)) return
+    setSending(true); setSendResult(null)
+    try {
+      const res = await fetch(`/api/events/${id}/guests/send-invites`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ guestIds: unsent.map(g => g.id), channel: inviteChannel }),
+      })
+      const d = await res.json()
+      setSendResult({ sent: d.sent ?? 0, failed: d.failed ?? 0, errors: d.errors })
+      await load()
+    } catch { setSendResult({ sent: 0, failed: unsent.length }) }
+    finally { setSending(false) }
+  }
+
+  // ── Per-guest send link ───────────────────────
+  const handleSendGuestLink = async (guest: Guest) => {
+    if (!guest.inviteToken) return
+    setSendingGuestId(guest.id)
+    try {
+      const channel: InviteChannel = guest.email ? "email" : "whatsapp"
+      const res = await fetch(`/api/events/${id}/guests/send-invites`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ guestIds: [guest.id], channel }),
+      })
+      if (res.ok) {
+        setGuests(prev => prev.map(g => g.id === guest.id ? { ...g, inviteSentAt: new Date().toISOString() } : g))
+      }
+    } catch { /* silent */ }
+    finally { setSendingGuestId(null) }
   }
 
   const handleCsvFile = (file: File) => {
@@ -319,21 +385,6 @@ export default function GuestsPage() {
     finally { setImporting(false) }
   }
 
-  const handleSendInvites = async () => {
-    const unsent = guests.filter(g => !g.inviteSentAt)
-    if (!unsent.length || !confirm(`Send WhatsApp invites to ${unsent.length} guest${unsent.length > 1 ? "s" : ""}?`)) return
-    setSending(true); setSendResult(null)
-    try {
-      const res = await fetch(`/api/events/${id}/guests/send-invites`, {
-        method: "POST", headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ guestIds: unsent.map(g => g.id) }),
-      })
-      const d = await res.json()
-      setSendResult({ sent: d.sent ?? 0, failed: d.failed ?? 0, errors: d.errors }); await load()
-    } catch { setSendResult({ sent: 0, failed: unsent.length }) }
-    finally { setSending(false) }
-  }
-
   const handleDelete = async (guestId: string, name: string) => {
     if (!confirm(`Remove ${name}?`)) return
     setDeletingId(guestId)
@@ -389,6 +440,9 @@ export default function GuestsPage() {
         .gp-btn-danger{background:transparent;border:1px solid rgba(239,68,68,.2);color:rgba(239,68,68,.6);padding:.28rem .55rem;font-size:.68rem;font-family:'DM Sans',sans-serif;cursor:pointer;border-radius:4px;transition:all .2s}
         .gp-btn-danger:hover:not(:disabled){border-color:#ef4444;color:#ef4444}
         .gp-btn-danger:disabled{opacity:.3;cursor:not-allowed}
+        .gp-btn-send-link{background:transparent;border:1px solid rgba(180,140,60,.3);color:var(--gold);padding:.2rem .5rem;font-size:.65rem;font-family:'DM Sans',sans-serif;cursor:pointer;border-radius:4px;transition:all .2s;white-space:nowrap}
+        .gp-btn-send-link:hover:not(:disabled){background:rgba(180,140,60,.1)}
+        .gp-btn-send-link:disabled{opacity:.3;cursor:not-allowed}
         .gp-title{font-family:'Cormorant Garamond',serif;font-size:clamp(1.5rem,5vw,2.25rem);font-weight:300;color:var(--text);letter-spacing:-.01em;margin-bottom:.25rem}
         .gp-sub{font-size:.78rem;color:var(--text-3);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:1.5rem}
         .gp-model-badge{font-size:.6rem;font-weight:500;letter-spacing:.08em;text-transform:uppercase;padding:.2rem .6rem;border-radius:99px;border:1px solid}
@@ -436,6 +490,9 @@ export default function GuestsPage() {
         .gp-status{font-size:.58rem;font-weight:500;letter-spacing:.06em;text-transform:uppercase;padding:.15rem .45rem;border-radius:99px;white-space:nowrap;border:1px solid transparent;display:inline-block}
         .gp-flag{font-size:.52rem;font-weight:500;padding:.1rem .3rem;border-radius:99px;background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25)}
         .gp-invite-bar{background:rgba(180,140,60,.06);border:1px solid rgba(180,140,60,.2);padding:.875rem 1rem;margin-bottom:1.25rem;border-radius:5px;display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
+        .gp-channel-toggle{display:flex;background:var(--bg-3);border:1px solid var(--border);border-radius:5px;padding:2px;gap:2px;flex-shrink:0}
+        .gp-channel-btn{padding:.3rem .65rem;font-family:'DM Sans',sans-serif;font-size:.65rem;border:none;border-radius:4px;cursor:pointer;transition:all .15s;color:var(--text-3);background:transparent}
+        .gp-channel-btn.on{background:var(--gold);color:#0a0a0a;font-weight:500}
         .gp-banner{padding:.75rem 1rem;margin-bottom:1rem;font-size:.78rem;border-radius:5px}
         .gp-banner-ok{background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);color:#22c55e}
         .gp-banner-err{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#ef4444}
@@ -481,7 +538,9 @@ export default function GuestsPage() {
           <div className="gp-top-right">
             {guests.length > 0 && <button className="gp-btn gp-btn-ghost" onClick={handleExport}>↓ Export</button>}
             {event.inviteModel === "CLOSED" && stats.notSent > 0 && (
-              <button className="gp-btn gp-btn-send" onClick={handleSendInvites} disabled={sending}>{sending ? "Sending…" : `📲 Invites (${stats.notSent})`}</button>
+              <button className="gp-btn gp-btn-send" onClick={handleSendInvites} disabled={sending}>
+                {sending ? "Sending…" : `${inviteChannel === "email" ? "✉" : "📲"} Invites (${stats.notSent})`}
+              </button>
             )}
             <button className="gp-btn gp-btn-gold" onClick={() => setActiveTab("add")} disabled={isAtCapacity}>
               {isAtCapacity ? "At Capacity" : "+ Add"}
@@ -530,14 +589,20 @@ export default function GuestsPage() {
           <div className="gp-cap-banner gp-cap-warn">⚠ <strong>{hardCap - totalGuests} seat{hardCap - totalGuests !== 1 ? "s" : ""} remaining</strong> — approaching capacity.</div>
         )}
 
-        {/* Invite bar */}
+        {/* Invite bar — channel toggle + send button */}
         {event.inviteModel === "CLOSED" && stats.notSent > 0 && activeTab === "list" && !isAtCapacity && (
           <div className="gp-invite-bar">
             <div style={{ fontSize:".78rem", color:"rgba(180,140,60,.85)", lineHeight:1.5, flex:1, minWidth:0 }}>
               <strong style={{ display:"block", color:"#b48c3c", marginBottom:".1rem" }}>{stats.notSent} guest{stats.notSent > 1 ? "s" : ""} haven&apos;t received their invite yet</strong>
-              Send all pending invites at once via WhatsApp.
+              Send all pending invites — choose channel below.
             </div>
-            <button className="gp-btn gp-btn-send" onClick={handleSendInvites} disabled={sending} style={{ flexShrink:0 }}>{sending ? "Sending…" : "Send Invites"}</button>
+            <div style={{ display:"flex", alignItems:"center", gap:".5rem", flexShrink:0, flexWrap:"wrap" }}>
+              <div className="gp-channel-toggle">
+                <button className={`gp-channel-btn${inviteChannel === "whatsapp" ? " on" : ""}`} onClick={() => setInviteChannel("whatsapp")}>📲 WhatsApp</button>
+                <button className={`gp-channel-btn${inviteChannel === "email" ? " on" : ""}`} onClick={() => setInviteChannel("email")}>✉ Email</button>
+              </div>
+              <button className="gp-btn gp-btn-send" onClick={handleSendInvites} disabled={sending}>{sending ? "Sending…" : "Send Invites"}</button>
+            </div>
           </div>
         )}
 
@@ -561,7 +626,7 @@ export default function GuestsPage() {
         {activeTab === "list" && (
           <>
             <div className="gp-filters">
-              <input className="gp-search" placeholder="Search name or phone…" value={search} onChange={e => setSearch(e.target.value)} />
+              <input className="gp-search" placeholder="Search name, phone or email…" value={search} onChange={e => setSearch(e.target.value)} />
               <select className="gp-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value as RSVPStatus | "ALL")}>
                 <option value="ALL">All Statuses</option>
                 {Object.entries(RSVP_CONFIG).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -597,7 +662,11 @@ export default function GuestsPage() {
                 {groupedGuests.map(g => (
                   <TierGroup key={g.label} label={g.label} color={g.color} guests={g.guests}
                     isCollapsed={collapsedGroups.has(g.label)} onToggle={() => toggleGroup(g.label)}
-                    deletingId={deletingId} handleDelete={handleDelete} />
+                    deletingId={deletingId} handleDelete={handleDelete}
+                    inviteModel={event.inviteModel}
+                    sendingGuestId={sendingGuestId}
+                    handleSendGuestLink={handleSendGuestLink}
+                  />
                 ))}
               </>
             )}
@@ -623,6 +692,11 @@ export default function GuestsPage() {
               <label className="gp-label">Phone Number</label>
               <input className="gp-input" placeholder="e.g. 08012345678" value={addForm.phone} onChange={e => setAddForm(p => ({...p,phone:e.target.value}))} disabled={isAtCapacity} />
               <span className="gp-hint">Required to send a WhatsApp invite.</span>
+            </div>
+            <div className="gp-field">
+              <label className="gp-label">Email Address</label>
+              <input className="gp-input" type="email" placeholder="e.g. tunde@example.com" value={addForm.email} onChange={e => setAddForm(p => ({...p,email:e.target.value}))} disabled={isAtCapacity} />
+              <span className="gp-hint">Required to send an email invite. If both are provided, email is preferred.</span>
             </div>
             {event.guestTiers.length > 0 && (
               <div className="gp-field">
@@ -663,7 +737,7 @@ export default function GuestsPage() {
               <div className="gp-form-card" style={{ maxWidth:"100%" }}>
                 <div className="gp-form-title">Import from CSV</div>
                 <div className="gp-info-box">
-                  <strong>Required:</strong> First Name, Last Name &nbsp;·&nbsp; <strong>Optional:</strong> Phone · Max 200 per import.
+                  <strong>Required:</strong> First Name, Last Name &nbsp;·&nbsp; <strong>Optional:</strong> Phone, Email · Max 200 per import.
                   {hardCap !== null && <><br /><strong>Remaining capacity:</strong> {hardCap - totalGuests} seat{hardCap - totalGuests !== 1 ? "s" : ""}.</>}
                 </div>
                 {!csvPreview.length ? (
@@ -704,7 +778,7 @@ export default function GuestsPage() {
                 <div className="gp-info-box">
                   1. Open your sheet → <strong>Share → Anyone with link → Viewer</strong><br />
                   2. Paste the link below and click Sync. Re-sync anytime to pick up new rows.<br /><br />
-                  <strong>Required:</strong> First Name, Last Name &nbsp;·&nbsp; <strong>Optional:</strong> Phone
+                  <strong>Required:</strong> First Name, Last Name &nbsp;·&nbsp; <strong>Optional:</strong> Phone, Email
                 </div>
                 <div className="gp-field">
                   <label className="gp-label">Google Sheets Link</label>
