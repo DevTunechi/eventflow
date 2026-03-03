@@ -19,7 +19,6 @@ import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/context/AuthContext"
 
 // ── Theme Context ─────────────────────────────
-// Lets any child component read or toggle the theme
 interface ThemeContextType {
   theme: "dark" | "light"
   toggleTheme: () => void
@@ -35,7 +34,8 @@ export const useTheme = () => useContext(ThemeContext)
 // ── Nav items ────────────────────────────────
 // Guests / Vendors / Ushers removed (event-scoped).
 // Check-in added as a global nav item.
-// /checkin        → planner sees all events' usher links
+// Pricing added above Settings.
+// /checkin         → planner sees all events' usher links
 // /checkin/[token] → usher scanner (no auth required)
 const NAV_ITEMS = [
   {
@@ -71,6 +71,16 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: "/pricing",
+    label: "Pricing",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23" />
+        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </svg>
+    ),
+  },
+  {
     href: "/settings",
     label: "Settings",
     icon: (
@@ -92,19 +102,11 @@ export default function DashboardLayout({
   const pathname = usePathname()
   const router   = useRouter()
 
-  // Sidebar collapsed state — persisted in localStorage
-  const [collapsed, setCollapsed] = useState(false)
-
-  // Mobile drawer open state
-  const [drawerOpen, setDrawerOpen] = useState(false)
-
-  // Theme — dark by default, persisted in localStorage
-  const [theme, setTheme] = useState<"dark" | "light">("dark")
-
-  // User dropdown open state
+  const [collapsed,    setCollapsed]    = useState(false)
+  const [drawerOpen,   setDrawerOpen]   = useState(false)
+  const [theme,        setTheme]        = useState<"dark" | "light">("dark")
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
-  // Rehydrate preferences from localStorage on mount
   useEffect(() => {
     const savedCollapsed = localStorage.getItem("ef-sidebar-collapsed")
     const savedTheme     = localStorage.getItem("ef-theme") as "dark" | "light"
@@ -112,7 +114,6 @@ export default function DashboardLayout({
     if (savedTheme)     setTheme(savedTheme)
   }, [])
 
-  // Redirect to login if not authenticated
   useEffect(() => {
     if (!user) router.push("/login")
   }, [user, router])
@@ -129,14 +130,12 @@ export default function DashboardLayout({
     localStorage.setItem("ef-theme", next)
   }
 
-  // Close drawer when navigating on mobile
   useEffect(() => { setDrawerOpen(false) }, [pathname])
 
-  // Derive current page title from pathname
   const currentNav = NAV_ITEMS.find(n => n.href === pathname)
   const pageTitle  = currentNav?.label ?? "Dashboard"
 
-  if (!user) return null // prevent flash before redirect
+  if (!user) return null
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
@@ -183,7 +182,6 @@ export default function DashboardLayout({
             --text-3:       rgba(26,22,18,0.3);
           }
 
-          /* ── Root layout: sidebar + main ── */
           .ef-layout {
             display: flex;
             min-height: 100vh;
@@ -205,12 +203,10 @@ export default function DashboardLayout({
             overflow: hidden;
           }
 
-          /* Collapsed — icon-only mode */
           .ef-sidebar.collapsed {
             width: var(--sidebar-collapsed-w);
           }
 
-          /* Sidebar logo area */
           .ef-sidebar-logo {
             height: var(--topbar-h);
             display: flex;
@@ -233,13 +229,11 @@ export default function DashboardLayout({
 
           .ef-sidebar-wordmark span { color: var(--gold); }
 
-          /* Hide wordmark when collapsed */
           .ef-sidebar.collapsed .ef-sidebar-wordmark {
             opacity: 0;
             pointer-events: none;
           }
 
-          /* Nav section */
           .ef-nav {
             flex: 1;
             padding: 1rem 0;
@@ -250,7 +244,6 @@ export default function DashboardLayout({
             overflow-x: hidden;
           }
 
-          /* Individual nav item */
           .ef-nav-item {
             display: flex;
             align-items: center;
@@ -274,7 +267,6 @@ export default function DashboardLayout({
             background: var(--gold-dim);
           }
 
-          /* Active state — gold left border + bg */
           .ef-nav-item.active {
             color: var(--gold);
             background: var(--gold-dim);
@@ -289,19 +281,16 @@ export default function DashboardLayout({
             border-radius: 0 2px 2px 0;
           }
 
-          /* Nav icon */
           .ef-nav-icon {
             width: 18px; height: 18px;
             flex-shrink: 0;
           }
 
-          /* Hide label text when collapsed */
           .ef-sidebar.collapsed .ef-nav-label {
             opacity: 0;
             pointer-events: none;
           }
 
-          /* Collapse toggle button at sidebar bottom */
           .ef-sidebar-footer {
             padding: 0.75rem 0.5rem;
             border-top: 1px solid var(--border);
@@ -334,14 +323,11 @@ export default function DashboardLayout({
             transition: transform 0.25s ease;
           }
 
-          /* Flip the arrow when collapsed */
           .ef-sidebar.collapsed .ef-collapse-icon {
             transform: rotate(180deg);
           }
 
           /* ══ MOBILE DRAWER ════════════════════ */
-          /* On mobile, sidebar is hidden off-screen
-             and slides in as a drawer overlay */
           .ef-drawer-overlay {
             display: none;
             position: fixed; inset: 0;
@@ -352,7 +338,6 @@ export default function DashboardLayout({
 
           /* ══ MAIN AREA ════════════════════════ */
           .ef-main {
-            /* Offset by sidebar width */
             margin-left: var(--sidebar-w);
             flex: 1;
             display: flex;
@@ -361,7 +346,6 @@ export default function DashboardLayout({
             transition: margin-left 0.25s ease;
           }
 
-          /* Adjust when sidebar is collapsed */
           .ef-main.collapsed {
             margin-left: var(--sidebar-collapsed-w);
           }
@@ -386,7 +370,6 @@ export default function DashboardLayout({
             gap: 1rem;
           }
 
-          /* Hamburger — mobile only */
           .ef-hamburger {
             display: none;
             background: transparent;
@@ -413,7 +396,6 @@ export default function DashboardLayout({
             gap: 0.75rem;
           }
 
-          /* Theme toggle button */
           .ef-theme-btn {
             width: 34px; height: 34px;
             border-radius: 50%;
@@ -434,7 +416,6 @@ export default function DashboardLayout({
 
           .ef-theme-btn svg { width: 15px; height: 15px; }
 
-          /* User avatar button */
           .ef-avatar-btn {
             position: relative;
             background: transparent;
@@ -456,7 +437,6 @@ export default function DashboardLayout({
             border-color: var(--gold);
           }
 
-          /* Fallback avatar when no photo */
           .ef-avatar-fallback {
             width: 34px; height: 34px;
             border-radius: 50%;
@@ -471,7 +451,6 @@ export default function DashboardLayout({
             letter-spacing: 0.05em;
           }
 
-          /* User dropdown menu */
           .ef-user-menu {
             position: absolute;
             top: calc(100% + 0.5rem);
@@ -552,40 +531,31 @@ export default function DashboardLayout({
           }
 
           /* ── RESPONSIVE ── */
-
-          /* Tablet */
           @media (max-width: 1024px) {
             .ef-content { padding: 1.5rem; }
           }
 
-          /* Mobile — sidebar becomes off-canvas drawer */
           @media (max-width: 768px) {
-
-            /* Sidebar fixed off-screen left */
             .ef-sidebar {
               transform: translateX(-100%);
               transition: transform 0.25s ease, width 0.25s ease;
-              width: var(--sidebar-w) !important; /* always full on mobile */
+              width: var(--sidebar-w) !important;
               box-shadow: 4px 0 24px rgba(0,0,0,0.4);
             }
 
-            /* Slide in when drawer is open */
             .ef-sidebar.drawer-open {
               transform: translateX(0);
             }
 
-            /* Overlay appears behind open drawer */
             .ef-drawer-overlay.active {
               display: block;
             }
 
-            /* Main takes full width on mobile */
             .ef-main,
             .ef-main.collapsed {
               margin-left: 0;
             }
 
-            /* Show hamburger on mobile */
             .ef-hamburger { display: flex; }
 
             .ef-content { padding: 1rem; }
@@ -598,7 +568,6 @@ export default function DashboardLayout({
             {/* ══ SIDEBAR ══ */}
             <aside className={`ef-sidebar ${collapsed ? "collapsed" : ""} ${drawerOpen ? "drawer-open" : ""}`}>
 
-              {/* Logo — clicking navigates to overview/home */}
               <Link href="/dashboard" className="ef-sidebar-logo" style={{ textDecoration: "none" }}>
                 <Image
                   src="/eflogo.png"
@@ -612,11 +581,8 @@ export default function DashboardLayout({
                 </span>
               </Link>
 
-              {/* Navigation */}
               <nav className="ef-nav">
                 {NAV_ITEMS.map((item) => {
-                  // Mark item active if pathname matches exactly
-                  // or starts with href (for nested routes)
                   const isActive = pathname === item.href ||
                     (item.href !== "/dashboard" && pathname.startsWith(item.href))
 
@@ -634,10 +600,8 @@ export default function DashboardLayout({
                 })}
               </nav>
 
-              {/* Collapse toggle */}
               <div className="ef-sidebar-footer">
                 <button className="ef-collapse-btn" onClick={toggleCollapse}>
-                  {/* Chevron left — flips to right when collapsed */}
                   <svg className="ef-collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M15 18l-6-6 6-6" />
                   </svg>
@@ -648,7 +612,7 @@ export default function DashboardLayout({
               </div>
             </aside>
 
-            {/* Mobile overlay — tap to close drawer */}
+            {/* Mobile overlay */}
             <div
               className={`ef-drawer-overlay ${drawerOpen ? "active" : ""}`}
               onClick={() => setDrawerOpen(false)}
@@ -657,11 +621,8 @@ export default function DashboardLayout({
             {/* ══ MAIN AREA ══ */}
             <div className={`ef-main ${collapsed ? "collapsed" : ""}`}>
 
-              {/* ── TOPBAR ── */}
               <header className="ef-topbar">
                 <div className="ef-topbar-left">
-
-                  {/* Hamburger — mobile only */}
                   <button
                     className="ef-hamburger"
                     onClick={() => setDrawerOpen(prev => !prev)}
@@ -671,34 +632,27 @@ export default function DashboardLayout({
                       <path d="M3 12h18M3 6h18M3 18h18" />
                     </svg>
                   </button>
-
-                  {/* Current page title */}
                   <h1 className="ef-page-title">{pageTitle}</h1>
                 </div>
 
                 <div className="ef-topbar-right">
-
-                  {/* Theme toggle */}
                   <button
                     className="ef-theme-btn"
                     onClick={toggleTheme}
                     aria-label="Toggle theme"
                   >
                     {theme === "dark" ? (
-                      // Sun icon — click to go light
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="4" />
                         <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
                       </svg>
                     ) : (
-                      // Moon icon — click to go dark
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                       </svg>
                     )}
                   </button>
 
-                  {/* User avatar + dropdown */}
                   <div style={{ position: "relative" }}>
                     <button
                       className="ef-avatar-btn"
@@ -712,23 +666,19 @@ export default function DashboardLayout({
                           className="ef-avatar"
                         />
                       ) : (
-                        // Fallback: show initials
                         <div className="ef-avatar-fallback">
                           {user?.displayName?.[0]?.toUpperCase() ?? "P"}
                         </div>
                       )}
                     </button>
 
-                    {/* Dropdown menu */}
                     {userMenuOpen && (
                       <>
-                        {/* Click outside to close */}
                         <div
                           style={{ position: "fixed", inset: 0, zIndex: 99 }}
                           onClick={() => setUserMenuOpen(false)}
                         />
                         <div className="ef-user-menu">
-                          {/* User info */}
                           <div className="ef-user-info">
                             <div className="ef-user-name">
                               {user?.displayName ?? "Planner"}
@@ -738,7 +688,6 @@ export default function DashboardLayout({
                             </div>
                           </div>
 
-                          {/* Menu actions */}
                           <Link href="/settings" className="ef-menu-item" onClick={() => setUserMenuOpen(false)}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <circle cx="12" cy="12" r="3" />
@@ -749,7 +698,6 @@ export default function DashboardLayout({
 
                           <div className="ef-menu-divider" />
 
-                          {/* Sign out */}
                           <button
                             className="ef-menu-item danger"
                             onClick={() => { setUserMenuOpen(false); signOut() }}
@@ -766,8 +714,6 @@ export default function DashboardLayout({
                 </div>
               </header>
 
-              {/* ── PAGE CONTENT ── */}
-              {/* Each dashboard page renders here */}
               <main className="ef-content">
                 {children}
               </main>

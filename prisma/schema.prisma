@@ -83,6 +83,7 @@ model User {
   emailVerified DateTime?
   image         String?   // Google profile photo URL
   phone         String?
+  plan          String    @default("free")
 
   // Business branding — shown on RSVP pages
   // and event microsites

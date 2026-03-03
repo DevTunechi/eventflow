@@ -1,7 +1,3 @@
-// ─────────────────────────────────────────────
-// src/context/AuthContext.tsx
-// ─────────────────────────────────────────────
-
 "use client"
 
 import {
@@ -14,27 +10,25 @@ import {
 } from "firebase/auth"
 import { auth, googleProvider } from "@/lib/firebase"
 import { useRouter } from "next/navigation"
+import Cookies from "js-cookie"
 
 interface AuthContextType {
   user:              User | null
   loading:           boolean
-  sessionToken:      string | null   // base64 session for API calls
+  sessionToken:      string | null
   signInWithGoogle:  () => Promise<void>
   signOut:           () => Promise<void>
 }
 
-// ── Helper: build + store session ─────────────
 const buildSession = (firebaseUser: User): string => {
   const payload = {
     uid:   firebaseUser.uid,
     email: firebaseUser.email ?? "",
     name:  firebaseUser.displayName ?? "",
   }
-  const encoded = btoa(JSON.stringify(payload))
-  // Cookie — server-side API routes read this
+  const encoded  = btoa(JSON.stringify(payload))
   const isSecure = location.protocol === "https:"
   document.cookie = `ef-session=${encoded}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax${isSecure ? "; Secure" : ""}`
-  // localStorage — so we can restore token on page reload
   localStorage.setItem("ef-session", encoded)
   return encoded
 }
@@ -42,9 +36,10 @@ const buildSession = (firebaseUser: User): string => {
 const clearSession = () => {
   document.cookie = "ef-session=; path=/; max-age=0"
   localStorage.removeItem("ef-session")
+  // Clear plan cookie on sign-out so gate shows again on next login
+  Cookies.remove("ef-plan")
 }
 
-// ── Context ────────────────────────────────────
 const AuthContext = createContext<AuthContextType>({
   user: null, loading: true, sessionToken: null,
   signInWithGoogle: async () => {},
@@ -58,19 +53,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
 
   useEffect(() => {
-    // On mount, restore token from localStorage so API calls
-    // work immediately without waiting for Firebase to resolve
     const stored = localStorage.getItem("ef-session")
     if (stored) setSessionToken(stored)
 
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser)
       if (firebaseUser) {
-        // Refresh the session token whenever Firebase confirms auth
         const token = buildSession(firebaseUser)
         setSessionToken(token)
       } else {
-        // User signed out — clear everything
         clearSession()
         setSessionToken(null)
       }
@@ -85,9 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result       = await signInWithPopup(auth, googleProvider)
       const firebaseUser = result.user
 
-      // Sync user into Neon DB
+      // Sync user into DB
       await fetch("/api/auth/sync", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           uid:   firebaseUser.uid,
@@ -99,6 +90,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const token = buildSession(firebaseUser)
       setSessionToken(token)
+
+      // Fetch plan and set cookie so middleware knows
+      // whether to redirect to /pricing or let through
+      try {
+        const res  = await fetch("/api/user/plan", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json()
+        const plan = data.plan ?? "free"
+        // "pro" users go straight through
+        // "free" users hit the pricing gate (cookie not set / set to "free")
+        if (plan === "pro") {
+          Cookies.set("ef-plan", "pro", { expires: 1 })
+        }
+        // Free users: don't set the cookie — middleware will redirect to /pricing
+      } catch {
+        // If plan fetch fails, don't block login
+      }
+
       router.push("/dashboard")
     } catch (error) {
       console.error("Google sign-in error:", error)

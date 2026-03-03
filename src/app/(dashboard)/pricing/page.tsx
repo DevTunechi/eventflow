@@ -1,25 +1,19 @@
 "use client"
 
-// ─────────────────────────────────────────────
-// src/app/(dashboard)/pricing/page.tsx
-//
-// Free vs Pro pricing page.
-// Billing: monthly subscription OR per-event.
-// Payment: Paystack (NGN).
-// ─────────────────────────────────────────────
-
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
+import Cookies from "js-cookie"
 
 type BillingMode = "monthly" | "per-event"
 
 const PLANS = {
   free: {
-    name:        "Free",
-    tagline:     "Get started at no cost",
-    monthly:     0,
-    perEvent:    0,
-    color:       "#6b7280",
+    name:     "Free",
+    tagline:  "Get started at no cost",
+    monthly:  0,
+    perEvent: 0,
+    color:    "#6b7280",
     features: [
       { text: "1 active event",                    included: true  },
       { text: "Up to 100 guests per event",         included: true  },
@@ -37,11 +31,11 @@ const PLANS = {
     ],
   },
   pro: {
-    name:        "Pro",
-    tagline:     "For professional event planners",
-    monthly:     15000,
-    perEvent:    8000,
-    color:       "#b48c3c",
+    name:     "Pro",
+    tagline:  "For professional event planners",
+    monthly:  15000,
+    perEvent: 8000,
+    color:    "#b48c3c",
     features: [
       { text: "Unlimited active events",            included: true },
       { text: "Unlimited guests per event",         included: true },
@@ -65,11 +59,17 @@ const fmt = (n: number) =>
 
 export default function PricingPage() {
   const [billing, setBilling] = useState<BillingMode>("monthly")
+  const router = useRouter()
+
+  // "Continue with Free" — sets cookie so middleware
+  // stops redirecting them back here on every login.
+  const handleContinueFree = () => {
+    Cookies.set("ef-plan", "free-acknowledged", { expires: 365 })
+    router.push("/dashboard")
+  }
 
   const handleUpgrade = () => {
     // TODO: initialise Paystack transaction
-    // const handler = PaystackPop.setup({ key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY, ... })
-    // handler.openIframe()
     alert("Paystack integration coming soon.")
   }
 
@@ -83,28 +83,23 @@ export default function PricingPage() {
         .pp { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 5rem; animation: ppIn 0.35s ease; }
         @keyframes ppIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
 
-        /* ── Top nav ── */
         .pp-back { font-size:0.78rem; color:var(--text-3); text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; transition:color 0.2s; margin-bottom:2rem; }
         .pp-back:hover { color:var(--gold); }
 
-        /* ── Hero ── */
         .pp-hero { text-align:center; margin-bottom:2.5rem; }
         .pp-eyebrow { font-size:0.6rem; font-weight:500; letter-spacing:0.25em; text-transform:uppercase; color:var(--gold); margin-bottom:0.75rem; }
         .pp-headline { font-family:'Cormorant Garamond',serif; font-size:clamp(2rem,5vw,3.25rem); font-weight:300; color:var(--text); line-height:1.1; letter-spacing:-0.02em; margin-bottom:0.875rem; }
         .pp-sub { font-size:0.875rem; color:var(--text-3); max-width:480px; margin:0 auto; line-height:1.7; font-weight:300; }
 
-        /* ── Billing toggle ── */
         .pp-toggle-wrap { display:flex; justify-content:center; margin-bottom:2.5rem; }
         .pp-toggle { display:flex; background:var(--bg-2); border:1px solid var(--border); border-radius:8px; padding:3px; gap:3px; }
         .pp-toggle-btn { padding:0.45rem 1.125rem; font-family:'DM Sans',sans-serif; font-size:0.75rem; letter-spacing:0.04em; border:none; border-radius:6px; cursor:pointer; transition:all 0.2s; color:var(--text-3); background:transparent; }
         .pp-toggle-btn.on { background:var(--gold); color:#0a0a0a; font-weight:500; }
         .pp-save-badge { font-size:0.58rem; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; padding:0.15rem 0.45rem; border-radius:99px; background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); color:#22c55e; margin-left:0.5rem; vertical-align:middle; }
 
-        /* ── Cards grid ── */
         .pp-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; align-items:start; }
         @media(max-width:640px) { .pp-grid { grid-template-columns:1fr; } }
 
-        /* ── Plan card ── */
         .pp-card { background:var(--bg-2); border:1px solid var(--border); border-radius:10px; overflow:hidden; transition:border-color 0.2s; }
         .pp-card.pro { border-color:rgba(180,140,60,0.4); }
         .pp-card-top { padding:1.5rem 1.5rem 1.25rem; border-bottom:1px solid var(--border); }
@@ -121,18 +116,15 @@ export default function PricingPage() {
         .pp-feature-text { color:var(--text-2); line-height:1.4; }
         .pp-feature-text.off { color:var(--text-3); text-decoration:line-through; }
 
-        /* ── CTA buttons ── */
         .pp-cta { width:100%; padding:0.75rem; font-family:'DM Sans',sans-serif; font-size:0.82rem; font-weight:500; letter-spacing:0.04em; border:none; border-radius:7px; cursor:pointer; transition:all 0.2s; }
         .pp-cta-free { background:transparent; border:1px solid var(--border); color:var(--text-2); }
         .pp-cta-free:hover { border-color:var(--border-hover); color:var(--text); }
         .pp-cta-pro { background:var(--gold); color:#0a0a0a; }
         .pp-cta-pro:hover { background:#c9a050; }
 
-        /* ── Pro highlight band ── */
         .pp-pro-band { background:rgba(180,140,60,0.07); border-bottom:1px solid rgba(180,140,60,0.18); padding:0.5rem 1.5rem; display:flex; align-items:center; gap:0.5rem; }
         .pp-pro-band-text { font-size:0.65rem; color:rgba(180,140,60,0.8); letter-spacing:0.05em; }
 
-        /* ── FAQ ── */
         .pp-faq { margin-top:3rem; }
         .pp-faq-title { font-family:'Cormorant Garamond',serif; font-size:1.375rem; font-weight:300; color:var(--text); margin-bottom:1.25rem; text-align:center; }
         .pp-faq-list { display:flex; flex-direction:column; gap:0.625rem; max-width:620px; margin:0 auto; }
@@ -142,7 +134,6 @@ export default function PricingPage() {
         .pp-faq-chevron { color:var(--text-3); font-size:0.7rem; flex-shrink:0; transition:transform 0.2s; }
         .pp-faq-a { padding:0 1.125rem 0.875rem; font-size:0.78rem; color:var(--text-3); line-height:1.7; font-weight:300; }
 
-        /* ── Note ── */
         .pp-note { margin-top:2rem; text-align:center; font-size:0.72rem; color:var(--text-3); line-height:1.7; }
         .pp-note a { color:var(--gold); text-decoration:none; }
         .pp-note a:hover { text-decoration:underline; }
@@ -151,7 +142,6 @@ export default function PricingPage() {
       <div className="pp">
         <Link href="/dashboard" className="pp-back">← Dashboard</Link>
 
-        {/* Hero */}
         <div className="pp-hero">
           <div className="pp-eyebrow">Plans & Pricing</div>
           <h1 className="pp-headline">Simple pricing,<br />powerful events</h1>
@@ -161,7 +151,6 @@ export default function PricingPage() {
           </p>
         </div>
 
-        {/* Billing toggle */}
         <div className="pp-toggle-wrap">
           <div className="pp-toggle">
             <button
@@ -180,10 +169,9 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* Plan cards */}
         <div className="pp-grid">
 
-          {/* ── Free ── */}
+          {/* Free */}
           <div className="pp-card">
             <div className="pp-card-top">
               <div className="pp-plan-badge" style={{ color:"#6b7280", borderColor:"rgba(107,114,128,0.3)", background:"rgba(107,114,128,0.08)" }}>
@@ -204,11 +192,14 @@ export default function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <button className="pp-cta pp-cta-free" disabled>Current plan</button>
+              {/* Sets cookie so middleware stops intercepting */}
+              <button className="pp-cta pp-cta-free" onClick={handleContinueFree}>
+                Continue with Free
+              </button>
             </div>
           </div>
 
-          {/* ── Pro ── */}
+          {/* Pro */}
           <div className="pp-card pro">
             <div className="pp-pro-band">
               <span style={{ fontSize:"0.75rem" }}>⚡</span>
@@ -245,7 +236,6 @@ export default function PricingPage() {
 
         </div>
 
-        {/* FAQ */}
         <div className="pp-faq">
           <div className="pp-faq-title">Common questions</div>
           <div className="pp-faq-list">
@@ -276,18 +266,15 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* Note */}
         <p className="pp-note">
           Prices are in Nigerian Naira (₦) and exclude applicable taxes.<br />
           Questions? <a href="mailto:support@eventflow.app">Contact support</a>
         </p>
-
       </div>
     </>
   )
 }
 
-// ── FAQ accordion item ────────────────────────
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false)
   return (
