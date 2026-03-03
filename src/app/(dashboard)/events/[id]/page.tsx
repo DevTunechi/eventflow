@@ -7,6 +7,219 @@ import Link from "next/link"
 import Image from "next/image"
 import PostPublishChecklist from "@/components/PostPublishChecklist"
 
+// ─────────────────────────────────────────────
+// HostLinkCard
+// Placed in the LEFT column, below "Manage Event"
+// ─────────────────────────────────────────────
+
+interface HostLinkCardProps {
+  eventId:   string
+  eventName: string
+}
+
+interface HostLinkStatus {
+  hasHostLink: boolean
+  hostEmail:   string | null
+  hostName:    string | null
+  hostLink:    string | null
+}
+
+function HostLinkCard({ eventId, eventName }: HostLinkCardProps) {
+  const [status,   setStatus]   = useState<HostLinkStatus | null>(null)
+  const [loading,  setLoading]  = useState(true)
+  const [form,     setForm]     = useState({ hostName: "", hostEmail: "" })
+  const [sending,  setSending]  = useState(false)
+  const [sent,     setSent]     = useState(false)
+  const [copied,   setCopied]   = useState(false)
+  const [error,    setError]    = useState("")
+  const [showForm, setShowForm] = useState(false)
+
+  const getAuthHeaders = (): Record<string, string> => {
+    if (typeof window === "undefined") return {}
+    const token = localStorage.getItem("ef-session") ?? ""
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/events/${eventId}/host-link`, { headers: getAuthHeaders() })
+        if (res.ok) setStatus(await res.json())
+      } catch { /* silent */ }
+      finally { setLoading(false) }
+    }
+    load()
+  }, [eventId])
+
+  const handleSend = async () => {
+    if (!form.hostName.trim() || !form.hostEmail.trim()) { setError("Both fields are required."); return }
+    setSending(true); setError("")
+    try {
+      const res = await fetch(`/api/events/${eventId}/host-link`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body:    JSON.stringify({ hostName: form.hostName, hostEmail: form.hostEmail, resend: true }),
+      })
+      if (!res.ok) { const d = await res.json(); setError(d.error ?? "Failed"); return }
+      const d = await res.json()
+      setStatus({ hasHostLink: true, hostEmail: form.hostEmail, hostName: form.hostName, hostLink: d.hostLink })
+      setSent(true)
+      setShowForm(false)
+    } catch { setError("Failed to send host link") }
+    finally { setSending(false) }
+  }
+
+  const copyLink = () => {
+    if (!status?.hostLink) return
+    navigator.clipboard.writeText(status.hostLink)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  if (loading) return null
+
+  return (
+    <div style={{
+      background: "var(--bg-2)", border: "1px solid var(--border)",
+      padding: "1.375rem", marginBottom: "1.25rem",
+    }}>
+      {/* Title */}
+      <div style={{
+        fontSize: "0.6rem", fontWeight: 500, letterSpacing: "0.2em",
+        textTransform: "uppercase", color: "var(--gold)", marginBottom: "1.125rem",
+        display: "flex", alignItems: "center", gap: "0.75rem",
+      }}>
+        Host Access
+        <span style={{ flex: 1, height: 1, background: "var(--border)", display: "block" }} />
+      </div>
+
+      {status?.hasHostLink ? (
+        <>
+          <p style={{ fontSize: "0.75rem", color: "var(--text-2)", marginBottom: "0.75rem", lineHeight: 1.6 }}>
+            Host link sent to <strong style={{ color: "var(--text)" }}>{status.hostName}</strong> ({status.hostEmail}).
+            {sent && <span style={{ color: "#22c55e" }}> ✓ Just sent.</span>}
+          </p>
+
+          {/* Copy link */}
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <div style={{
+              flex: 1, padding: "0.5rem 0.75rem", background: "var(--bg)",
+              border: "1px solid var(--border)", fontSize: "0.72rem",
+              color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {status.hostLink}
+            </div>
+            <button onClick={copyLink} style={{
+              padding: "0.5rem 0.875rem", background: "transparent",
+              border: `1px solid ${copied ? "#22c55e" : "var(--border)"}`,
+              color: copied ? "#22c55e" : "var(--text-3)",
+              fontFamily: "'DM Sans', sans-serif", fontSize: "0.7rem",
+              cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}>
+              {copied ? "✓ Copied" : "Copy"}
+            </button>
+          </div>
+
+          {/* Resend to different person */}
+          {!showForm ? (
+            <button onClick={() => setShowForm(true)} style={{
+              background: "transparent", border: "none", padding: 0,
+              color: "var(--text-3)", fontSize: "0.7rem", cursor: "pointer",
+              fontFamily: "'DM Sans', sans-serif", textDecoration: "underline",
+            }}>
+              Send to a different person
+            </button>
+          ) : (
+            <HostLinkForm
+              form={form} setForm={setForm} error={error}
+              sending={sending} onSend={handleSend} onCancel={() => setShowForm(false)}
+            />
+          )}
+        </>
+      ) : (
+        <>
+          <p style={{ fontSize: "0.75rem", color: "var(--text-2)", lineHeight: 1.6, marginBottom: "1rem" }}>
+            Give the host a read-only link to track RSVPs, check-in progress, gifts, and tributes in real time.
+          </p>
+          {!showForm ? (
+            <button onClick={() => setShowForm(true)} style={{
+              padding: "0.5rem 1rem", background: "var(--gold)", color: "#0a0a0a",
+              border: "none", fontFamily: "'DM Sans', sans-serif", fontSize: "0.75rem",
+              fontWeight: 500, cursor: "pointer", letterSpacing: "0.04em",
+            }}>
+              Send Host Link
+            </button>
+          ) : (
+            <HostLinkForm
+              form={form} setForm={setForm} error={error}
+              sending={sending} onSend={handleSend} onCancel={() => setShowForm(false)}
+            />
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function HostLinkForm({ form, setForm, error, sending, onSend, onCancel }: {
+  form:     { hostName: string; hostEmail: string }
+  setForm:  (f: { hostName: string; hostEmail: string }) => void
+  error:    string
+  sending:  boolean
+  onSend:   () => void
+  onCancel: () => void
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+      <input
+        placeholder="Host's name (e.g. Adunola)"
+        value={form.hostName}
+        onChange={e => setForm({ ...form, hostName: e.target.value })}
+        style={{
+          padding: "0.55rem 0.75rem", background: "var(--bg-3)",
+          border: "1px solid var(--border)", borderRadius: 5,
+          color: "var(--text)", fontFamily: "'DM Sans', sans-serif",
+          fontSize: "0.8rem", outline: "none", width: "100%",
+        }}
+      />
+      <input
+        placeholder="Host's email"
+        type="email"
+        value={form.hostEmail}
+        onChange={e => setForm({ ...form, hostEmail: e.target.value })}
+        style={{
+          padding: "0.55rem 0.75rem", background: "var(--bg-3)",
+          border: "1px solid var(--border)", borderRadius: 5,
+          color: "var(--text)", fontFamily: "'DM Sans', sans-serif",
+          fontSize: "0.8rem", outline: "none", width: "100%",
+        }}
+      />
+      {error && <p style={{ fontSize: "0.72rem", color: "#ef4444" }}>{error}</p>}
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <button onClick={onSend} disabled={sending} style={{
+          flex: 1, padding: "0.55rem", background: "var(--gold)", color: "#0a0a0a",
+          border: "none", fontFamily: "'DM Sans', sans-serif", fontSize: "0.75rem",
+          fontWeight: 500, cursor: "pointer", opacity: sending ? 0.5 : 1,
+        }}>
+          {sending ? "Sending…" : "Send via Email"}
+        </button>
+        <button onClick={onCancel} style={{
+          padding: "0.55rem 0.875rem", background: "transparent",
+          border: "1px solid var(--border)", color: "var(--text-3)",
+          fontFamily: "'DM Sans', sans-serif", fontSize: "0.75rem", cursor: "pointer",
+        }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// EventDetailPage
+// ─────────────────────────────────────────────
+
 interface GuestTier {
   id: string
   name: string
@@ -325,7 +538,7 @@ export default function EventDetailPage() {
         {/* Body */}
         <div className="ed-body">
 
-          {/* Left */}
+          {/* Left column */}
           <div>
             {event.description && (
               <div className="ed-card">
@@ -427,9 +640,12 @@ export default function EventDetailPage() {
                 ))}
               </div>
             </div>
+
+            {/* Host Access — below Manage Event, above sidebar on mobile */}
+            <HostLinkCard eventId={event.id} eventName={event.name} />
           </div>
 
-          {/* Sidebar */}
+          {/* Right sidebar */}
           <div>
             <div className="ed-card">
               <div className="ed-card-title">Stats</div>
@@ -486,7 +702,7 @@ export default function EventDetailPage() {
         </div>
       </div>
 
-      {/* Post-publish checklist — no WA connection step needed */}
+      {/* Post-publish checklist */}
       {showChecklist && event && (
         <PostPublishChecklist
           eventId={event.id}

@@ -176,6 +176,12 @@ model Event {
   // pool. Null = never release.
   releaseReservedAfter Int?
 
+  // ── HOST LINK ─────────────────────────────
+  isPrivate     Boolean     @default(false)
+  hostToken     String?     @unique
+  hostEmail     String?
+  hostName      String?
+
   // White-label branding
   brandColor    String?     @default("#C9A84C")
   brandLogo     String?
