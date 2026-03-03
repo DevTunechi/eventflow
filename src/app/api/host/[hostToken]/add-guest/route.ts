@@ -46,7 +46,7 @@ export async function POST(
       select: {
         id: true, firstName: true, lastName: true, phone: true, email: true,
         rsvpStatus: true, checkedIn: true, checkedInAt: true,
-        tableNumber: true, isPrivate: true,
+        tableNumber: true,
         tier:  { select: { name: true, color: true } },
         meals: { select: { menuItem: { select: { name: true } } } },
         gifts: { select: { amount: true, giftType: true, status: true } },
