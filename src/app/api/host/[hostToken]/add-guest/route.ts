@@ -22,9 +22,12 @@ export async function POST(
       return NextResponse.json({ error: "Event is at full capacity" }, { status: 409 })
     }
 
-    const { firstName, lastName, phone } = await req.json()
+    const { firstName, lastName, phone, email } = await req.json()
     if (!firstName?.trim() || !lastName?.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 })
+    }
+    if (!phone?.trim() && !email?.trim()) {
+      return NextResponse.json({ error: "Please provide at least a phone number or email address" }, { status: 400 })
     }
 
     const token = `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
@@ -34,15 +37,16 @@ export async function POST(
         eventId:      event.id,
         firstName:    firstName.trim(),
         lastName:     lastName.trim(),
-        phone:        phone?.trim() || null,
+        phone:        phone?.trim()  || null,
+        email:        email?.trim()  || null,
         rsvpStatus:   "CONFIRMED",
         inviteChannel:"MANUAL",
         qrCode:       token,
       },
       select: {
-        id: true, firstName: true, lastName: true, phone: true,
+        id: true, firstName: true, lastName: true, phone: true, email: true,
         rsvpStatus: true, checkedIn: true, checkedInAt: true,
-        tableNumber: true,
+        tableNumber: true, isPrivate: true,
         tier:  { select: { name: true, color: true } },
         meals: { select: { menuItem: { select: { name: true } } } },
         gifts: { select: { amount: true, giftType: true, status: true } },

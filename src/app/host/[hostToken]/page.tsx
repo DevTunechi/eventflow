@@ -80,7 +80,7 @@ export default function HostPortal() {
   const [tab,      setTab]      = useState<Tab>("overview")
 
   // Add guest form
-  const [addForm,    setAddForm]    = useState({ firstName:"", lastName:"", phone:"" })
+  const [addForm,    setAddForm]    = useState({ firstName:"", lastName:"", phone:"", email:"" })
   const [adding,     setAdding]     = useState(false)
   const [addError,   setAddError]   = useState("")
   const [addSuccess, setAddSuccess] = useState(false)
@@ -104,18 +104,24 @@ export default function HostPortal() {
 
   const handleAddGuest = async () => {
     if (!addForm.firstName.trim() || !addForm.lastName.trim()) { setAddError("Name is required."); return }
+    if (!addForm.phone.trim() && !addForm.email.trim()) { setAddError("Please provide at least a phone number or email address."); return }
     setAdding(true); setAddError("")
     try {
       const res = await fetch(`/api/host/${hostToken}/add-guest`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(addForm),
+        body:    JSON.stringify({
+          firstName: addForm.firstName.trim(),
+          lastName:  addForm.lastName.trim(),
+          phone:     addForm.phone.trim()  || null,
+          email:     addForm.email.trim()  || null,
+        }),
       })
       if (!res.ok) { const d = await res.json(); setAddError(d.error ?? "Failed to add guest"); return }
       const d = await res.json()
       setGuests(prev => [d.guest, ...prev])
       setEvent(prev => prev ? { ...prev, _count: { guests: prev._count.guests + 1 } } : prev)
-      setAddForm({ firstName:"", lastName:"", phone:"" })
+      setAddForm({ firstName:"", lastName:"", phone:"", email:"" })
       setAddSuccess(true); setTimeout(() => setAddSuccess(false), 3000)
     } catch { setAddError("Failed to add guest") }
     finally { setAdding(false) }
@@ -291,16 +297,45 @@ export default function HostPortal() {
               {!atCapacity && (
                 <div className="hp-card">
                   <div className="hp-card-title" style={{ color:gold }}>Add a Guest</div>
+
+                  {/* Name row */}
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.625rem", marginBottom:"0.625rem" }}>
-                    <input className="hp-input" placeholder="First name" value={addForm.firstName} onChange={e => setAddForm(p => ({...p,firstName:e.target.value}))} />
-                    <input className="hp-input" placeholder="Last name"  value={addForm.lastName}  onChange={e => setAddForm(p => ({...p,lastName:e.target.value}))} />
+                    <input className="hp-input" placeholder="First name *" value={addForm.firstName} onChange={e => setAddForm(p => ({...p,firstName:e.target.value}))} />
+                    <input className="hp-input" placeholder="Last name *"  value={addForm.lastName}  onChange={e => setAddForm(p => ({...p,lastName:e.target.value}))} />
                   </div>
-                  <div style={{ display:"flex", gap:"0.625rem", marginBottom:"0.375rem" }}>
-                    <input className="hp-input" placeholder="Phone number" value={addForm.phone} onChange={e => setAddForm(p => ({...p,phone:e.target.value}))} />
-                    <button className="hp-btn-gold" onClick={handleAddGuest} disabled={adding}>{adding ? "Adding…" : "Add"}</button>
+
+                  {/* Contact — phone + email, at least one required */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.625rem", marginBottom:"0.375rem" }}>
+                    <div>
+                      <input
+                        className="hp-input"
+                        placeholder="Phone number"
+                        value={addForm.phone}
+                        onChange={e => setAddForm(p => ({...p,phone:e.target.value}))}
+                      />
+                    </div>
+                    <div>
+                      <input
+                        className="hp-input"
+                        type="email"
+                        placeholder="Email address"
+                        value={addForm.email}
+                        onChange={e => setAddForm(p => ({...p,email:e.target.value}))}
+                      />
+                    </div>
                   </div>
-                  {addError   && <p style={{ fontSize:"0.72rem", color:"#ef4444", marginTop:"0.375rem" }}>{addError}</p>}
-                  {addSuccess && <p style={{ fontSize:"0.72rem", color:"#22c55e", marginTop:"0.375rem" }}>✓ Guest added</p>}
+
+                  {/* Hint */}
+                  <p style={{ fontSize:"0.65rem", color:"rgba(240,236,228,0.3)", marginBottom:"0.625rem", lineHeight:1.5 }}>
+                    Provide at least one contact. If email is available, it will be used to send the invite.
+                  </p>
+
+                  <button className="hp-btn-gold" onClick={handleAddGuest} disabled={adding} style={{ width:"100%" }}>
+                    {adding ? "Adding…" : "Add Guest"}
+                  </button>
+
+                  {addError   && <p style={{ fontSize:"0.72rem", color:"#ef4444", marginTop:"0.5rem" }}>{addError}</p>}
+                  {addSuccess && <p style={{ fontSize:"0.72rem", color:"#22c55e", marginTop:"0.5rem" }}>✓ Guest added successfully</p>}
                 </div>
               )}
               {atCapacity && (
