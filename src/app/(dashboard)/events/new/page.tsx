@@ -173,31 +173,48 @@ export default function NewEventPage() {
     document.head.appendChild(script)
   }, [])
 
-  // ── Wire up PlaceAutocompleteElement once Maps is ready ───────
+  /// ── Load Google Maps script ───────────────────────────────────
+
+  useEffect(() => {
+    if (!MAPS_KEY) return
+
+    // Already loaded
+    if (window.google?.maps?.places) { setMapsReady(true); return }
+
+    // Already injected but not ready yet — wait for callback
+    if (document.getElementById("gmap-script")) return
+
+    window.initGooglePlaces = () => setMapsReady(true)
+
+    const script    = document.createElement("script")
+    script.id       = "gmap-script"
+    script.src      = `https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&libraries=places&callback=initGooglePlaces&loading=async`
+    script.async    = true
+    script.defer    = true
+    document.head.appendChild(script)
+  }, [])
+
+  // ── Attach Autocomplete to input once Maps is ready ───────────
 
   useEffect(() => {
     if (!mapsReady || !venueInputRef.current) return
-    // Avoid attaching twice
-    if (venueInputRef.current.dataset.acAttached) return
-    venueInputRef.current.dataset.acAttached = "1"
+    if (autocompleteRef.current) return // already attached
 
-    // PlaceAutocompleteElement is the new API (replaces Autocomplete)
-    // It wraps the input and injects its own dropdown
-    const acElement = new (window.google.maps.places as any).PlaceAutocompleteElement({
-      inputElement: venueInputRef.current,
-      types:        ["establishment", "geocode"],
+    const ac = new window.google.maps.places.Autocomplete(venueInputRef.current, {
+      fields: ["formatted_address", "geometry", "name"],
     })
 
-    // Listen for place selection
-    acElement.addEventListener("gmp-placeselect", async (event: any) => {
-      const place = event.place
-      await place.fetchFields({ fields: ["displayName", "formattedAddress", "location"] })
+    autocompleteRef.current = ac
 
-      const lat    = place.location?.lat()
-      const lng    = place.location?.lng()
-      const addr   = place.formattedAddress ?? ""
-      const name   = place.displayName      ?? ""
-      const mapUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+    ac.addListener("place_changed", () => {
+      const place = ac.getPlace()
+      if (!place.geometry?.location) return
+
+      const lat       = place.geometry.location.lat()
+      const lng       = place.geometry.location.lng()
+      const addr      = place.formatted_address ?? ""
+      const name      = place.name              ?? ""
+      const mapUrl    = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
       const staticUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=15&size=600x200&markers=color:red|${lat},${lng}&key=${MAPS_KEY}`
 
       setForm(prev => ({
