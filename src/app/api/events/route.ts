@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth-server"
 import { prisma } from "@/lib/prisma"
 
-// ── GET /api/events — list planner's events ───
+// ── GET /api/events ───────────────────────────
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) {
@@ -13,11 +13,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const events = await prisma.event.findMany({
-      where: { plannerId: session.uid },
+      where:   { plannerId: session.uid },
       orderBy: { createdAt: "desc" },
       include: {
         guestTiers: { select: { id: true, name: true, color: true } },
-        _count: { select: { guests: true } },
+        _count:     { select: { guests: true } },
       },
     })
 
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ── POST /api/events — create event ───────────
+// ── POST /api/events ──────────────────────────
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) {
@@ -41,20 +41,21 @@ export async function POST(req: NextRequest) {
     const {
       name, eventType, eventDate, startTime, endTime,
       venueName, venueAddress, venueCapacity,
+      // ── Map coordinates + directions link ──
+      venueLat, venueLng, venueMapUrl,
       description, invitationCard,
       inviteModel, requireOtp, rsvpDeadline,
       brandColor,
-      tiers = [],
+      tiers      = [],
       totalTables, seatsPerTable, releaseReservedAfter,
-      menuItems = [],
-      status = "DRAFT",
+      menuItems  = [],
+      status     = "DRAFT",
     } = body
 
     if (!name || !eventDate) {
       return NextResponse.json({ error: "Name and date are required" }, { status: 400 })
     }
 
-    // Generate slug from name + timestamp
     const slug = name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -74,6 +75,10 @@ export async function POST(req: NextRequest) {
         venueName:            venueName            || null,
         venueAddress:         venueAddress         || null,
         venueCapacity:        venueCapacity        ? Number(venueCapacity)        : null,
+        // ── Map fields ─────────────────────────
+        venueLat:             venueLat             ? Number(venueLat)             : null,
+        venueLng:             venueLng             ? Number(venueLng)             : null,
+        venueMapUrl:          venueMapUrl          || null,
         invitationCard:       invitationCard       || null,
         inviteModel:          inviteModel          || "OPEN",
         requireOtp:           requireOtp           ?? false,
@@ -84,7 +89,6 @@ export async function POST(req: NextRequest) {
         releaseReservedAfter: releaseReservedAfter ? Number(releaseReservedAfter) : null,
         status,
 
-        // Create tiers
         guestTiers: tiers.length > 0 ? {
           create: tiers.map((t: {
             name: string; color?: string; seatingType?: string;
@@ -99,7 +103,6 @@ export async function POST(req: NextRequest) {
           })),
         } : undefined,
 
-        // Create menu items
         menuItems: menuItems.length > 0 ? {
           create: menuItems.map((m: {
             category: string; name: string; description?: string;

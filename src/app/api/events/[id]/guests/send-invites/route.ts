@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth-server"
 import { decrypt, sendWhatsAppMessage } from "@/lib/whatsapp"
 import { sendEmail, inviteEmailHtml } from "@/lib/resend"
+import { whatsappVenueText } from "@/lib/emails"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://eventflowng.vercel.app"
 
@@ -40,7 +41,9 @@ export async function POST(
       select: {
         id: true, name: true, slug: true, inviteModel: true,
         eventDate: true, startTime: true,
-        venueName: true, invitationCard: true, brandColor: true,
+        venueName: true, venueAddress: true,
+        venueLat: true, venueLng: true,           // ← map fields
+        invitationCard: true, brandColor: true,
       },
     })
     if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 })
@@ -81,6 +84,14 @@ export async function POST(
       console.log("[send-invites] phoneNumberId:", user.waPhoneNumberId)
       console.log("[send-invites] token prefix:", accessToken.slice(0, 10))
 
+      // Build venue line once — reused for every guest
+      const venueText = whatsappVenueText({
+        venueName:    event.venueName,
+        venueAddress: event.venueAddress,
+        venueLat:     event.venueLat,
+        venueLng:     event.venueLng,
+      })
+
       for (const guest of guests) {
         if (!guest.phone) {
           skipped++
@@ -92,16 +103,28 @@ export async function POST(
           ? `${APP_URL}/rsvp/${event.slug}?invite=${guest.inviteToken}`
           : `${APP_URL}/rsvp/${event.slug}`
 
-        const message = [
+        const messageParts = [
           `Hello ${guest.firstName} 👋`,
           ``,
           `You're invited to *${event.name}*.`,
+          ``,
+          `📅 ${eventDate}`,
+        ]
+
+        if (venueText) {
+          messageParts.push(``)
+          messageParts.push(venueText)
+        }
+
+        messageParts.push(
           ``,
           `Click the link below to RSVP and confirm your attendance:`,
           inviteLink,
           ``,
           `We look forward to celebrating with you! 🎉`,
-        ].join("\n")
+        )
+
+        const message = messageParts.join("\n")
 
         try {
           const result = await sendWhatsAppMessage({
