@@ -1,5 +1,8 @@
 // src/app/api/host/[hostToken]/add-guest/route.ts
 // POST — host adds a guest (only if under capacity)
+//
+// Added vs previous: tierId support so host can
+// assign a tier when adding a guest manually.
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
@@ -13,7 +16,10 @@ export async function POST(
   try {
     const event = await prisma.event.findUnique({
       where:  { hostToken },
-      select: { id: true, venueCapacity: true, _count: { select: { guests: true } } },
+      select: {
+        id: true, venueCapacity: true,
+        _count: { select: { guests: true } },
+      },
     })
 
     if (!event) return NextResponse.json({ error: "Invalid host link" }, { status: 404 })
@@ -22,12 +28,26 @@ export async function POST(
       return NextResponse.json({ error: "Event is at full capacity" }, { status: 409 })
     }
 
-    const { firstName, lastName, phone, email } = await req.json()
+    const { firstName, lastName, phone, email, tierId } = await req.json()
+
     if (!firstName?.trim() || !lastName?.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 })
     }
     if (!phone?.trim() && !email?.trim()) {
-      return NextResponse.json({ error: "Please provide at least a phone number or email address" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Please provide at least a phone number or email address" },
+        { status: 400 }
+      )
+    }
+
+    // Validate tierId belongs to this event if provided
+    if (tierId) {
+      const tier = await prisma.guestTier.findFirst({
+        where: { id: tierId, eventId: event.id },
+      })
+      if (!tier) {
+        return NextResponse.json({ error: "Invalid tier" }, { status: 400 })
+      }
     }
 
     const token = `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
@@ -39,6 +59,7 @@ export async function POST(
         lastName:     lastName.trim(),
         phone:        phone?.trim()  || null,
         email:        email?.trim()  || null,
+        tierId:       tierId         || null,
         rsvpStatus:   "CONFIRMED",
         inviteChannel:"MANUAL",
         qrCode:       token,
@@ -48,7 +69,7 @@ export async function POST(
         rsvpStatus: true, checkedIn: true, checkedInAt: true,
         tableNumber: true,
         tier:  { select: { name: true, color: true } },
-        meals: { select: { menuItem: { select: { name: true } } } },
+        meals: { select: { menuItem: { select: { name: true, category: true } } } },
         gifts: { select: { amount: true, giftType: true, status: true } },
       },
     })
