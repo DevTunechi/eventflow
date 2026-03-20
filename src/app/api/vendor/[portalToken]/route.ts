@@ -2,24 +2,26 @@
 // FILE: src/app/api/vendor/[portalToken]/route.ts
 //
 // PUBLIC API — no authentication required.
-// Called by the vendor portal page on load.
+// Token is the authentication mechanism.
 //
 // GET /api/vendor/[portalToken]
-//   Looks up a Vendor by their portalToken (cuid),
-//   returns their details, the event summary,
-//   headcount stats, and meal tallies for caterers.
+//   Returns vendor + event + stats + tallies.
+//   Includes expiry info so the portal page
+//   can show the correct screen.
 //
-// PRIVACY RULE: Guest names and personal details
-//   are NEVER returned. Only counts and aggregates.
-//
-// The portalToken is stored in Vendor.portalToken,
-// generated as @default(cuid()) in schema.prisma.
+// Changes from previous version:
+//   - Adds expiry check via getExpiryInfo()
+//   - Returns 410 Gone after 24hrs post-event
+//   - Adds drink tallies for DRINK_VENDOR role
+//   - Returns staff list + count vs cap
+//   - Returns event timeline items
+//   - Records lastAccessed timestamp
 // ─────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { getExpiryInfo } from "@/lib/event-expiry"
 
-// GET /api/vendor/[portalToken]
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ portalToken: string }> }
@@ -27,7 +29,7 @@ export async function GET(
   try {
     const { portalToken } = await params
 
-    // 1. Look up vendor by their unique portal token
+    // 1. Look up vendor and include everything the portal needs
     const vendor = await prisma.vendor.findUnique({
       where:  { portalToken },
       select: {
@@ -36,11 +38,26 @@ export async function GET(
         contactName:            true,
         role:                   true,
         notes:                  true,
-        staffCount:             true, // Number of staff they're bringing
+        staffCount:             true,
         canOverrideCapacity:    true,
         capacityOverrideActive: true,
         eventId:                true,
-        // Include event details for the portal header
+        // Staff registered by this vendor
+        staff: {
+          select: {
+            id:         true,
+            name:       true,
+            phone:      true,
+            qrToken:    true,
+            checkedIn:  true,
+            checkedInAt: true,
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        // Existing feedback if vendor already submitted
+        feedback: {
+          select: { rating: true, message: true, submittedAt: true },
+        },
         event: {
           select: {
             id:             true,
@@ -52,27 +69,54 @@ export async function GET(
             venueAddress:   true,
             status:         true,
             invitationCard: true,
+            // Planner contact for vendor reference
+            planner: {
+              select: { name: true, phone: true, email: true },
+            },
+            // Structured schedule visible to all vendors
+            timeline: {
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id:          true,
+                time:        true,
+                title:       true,
+                description: true,
+                sortOrder:   true,
+              },
+            },
           },
         },
       },
     })
 
-    // 2. 404 if token doesn't match any vendor
+    // 2. 404 if token is invalid
     if (!vendor) {
       return NextResponse.json(
-        { error: "Vendor not found. This link may be invalid or expired." },
+        { error: "Vendor not found. This link may be invalid." },
         { status: 404 }
       )
     }
 
-    // 3. Record that this vendor accessed their portal
-    //    Used by planner to see "last accessed" in vendor list
+    // 3. Check expiry — returns 410 Gone after 24hrs post-event
+    const expiry = getExpiryInfo(new Date(vendor.event.eventDate))
+    if (expiry.isExpired) {
+      return NextResponse.json(
+        {
+          error:     "This portal has expired.",
+          eventName: vendor.event.name,
+          expiredAt: expiry.expiresAt,
+        },
+        { status: 410 } // 410 Gone — semantically correct for expired resources
+      )
+    }
+
+    // 4. Record portal access timestamp
     await prisma.vendor.update({
       where: { portalToken },
       data:  { lastAccessed: new Date() },
     })
 
-    // 4. Pull headcount stats — no guest names, just counts
+    // 5. Pull live headcount stats
     const [totalGuests, checkedIn] = await Promise.all([
       prisma.guest.count({
         where: { eventId: vendor.eventId, rsvpStatus: "CONFIRMED" },
@@ -82,36 +126,37 @@ export async function GET(
       }),
     ])
 
-    // 5. Pull meal tallies for CATERER vendors only
-    //    Groups meal selections by menu item to show how many of each dish is needed
-    let mealTallies: Array<{
-      menuItemId:  string
-      name:        string
-      category:    string
-      totalOrders: number
-    }> = []
+    // 6. Pull food tallies for CATERER
+    //    Pull drink tallies for DRINK_VENDOR
+    //    Both use the same GuestMeal aggregate —
+    //    just filtered by MenuCategory
+    let foodTallies:  TallyItem[] = []
+    let drinkTallies: TallyItem[] = []
 
-    if (vendor.role === "CATERER") {
-      // Aggregate all guest meal selections for this event
+    const isCaterer     = vendor.role === "CATERER"
+    const isDrinkVendor = vendor.role === "DRINK_VENDOR"
+
+    if (isCaterer || isDrinkVendor) {
+      // Aggregate all confirmed guest meal selections
       const meals = await prisma.guestMeal.groupBy({
-        by:          ["menuItemId"],
+        by:    ["menuItemId"],
         where: {
           guest: { eventId: vendor.eventId, rsvpStatus: "CONFIRMED" },
         },
-        _sum: { quantity: true },
-        orderBy: { _sum: { quantity: "desc" } },
+        _sum:     { quantity: true },
+        orderBy:  { _sum: { quantity: "desc" } },
       })
 
-      // Look up the menu item names and categories for the tally
       if (meals.length > 0) {
+        // Get the menu item names and categories
         const menuItems = await prisma.menuItem.findMany({
           where:  { id: { in: meals.map(m => m.menuItemId) } },
           select: { id: true, name: true, category: true },
         })
 
-        // Merge the tally counts with the menu item details
         const itemMap = new Map(menuItems.map(i => [i.id, i]))
-        mealTallies = meals
+
+        const allTallies = meals
           .map(m => {
             const item = itemMap.get(m.menuItemId)
             if (!item) return null
@@ -122,29 +167,48 @@ export async function GET(
               totalOrders: m._sum.quantity ?? 0,
             }
           })
-          .filter(Boolean) as typeof mealTallies
+          .filter(Boolean) as TallyItem[]
+
+        if (isCaterer) {
+          // Caterers see everything EXCEPT drinks
+          foodTallies = allTallies.filter(t => t.category !== "DRINK")
+        }
+        if (isDrinkVendor) {
+          // Drink vendors see only DRINK category items
+          drinkTallies = allTallies.filter(t => t.category === "DRINK")
+        }
       }
     }
 
-    // 6. Return everything the vendor portal needs
+    // 7. Return full portal payload
     return NextResponse.json({
       vendor: {
         id:                     vendor.id,
         name:                   vendor.name,
         contactName:            vendor.contactName,
         role:                   vendor.role,
-        staffCount:             vendor.staffCount,
+        staffCount:             vendor.staffCount,   // Max staff cap set by planner
+        staffRegistered:        vendor.staff.length, // How many vendor has added so far
         canOverrideCapacity:    vendor.canOverrideCapacity,
         capacityOverrideActive: vendor.capacityOverrideActive,
         notes:                  vendor.notes,
+        staff:                  vendor.staff,
+        existingFeedback:       vendor.feedback,     // null if not yet submitted
       },
-      event: vendor.event,
+      event: {
+        ...vendor.event,
+        plannerName:  vendor.event.planner.name,
+        plannerPhone: vendor.event.planner.phone,
+        plannerEmail: vendor.event.planner.email,
+      },
       stats: {
         totalGuests,
         checkedIn,
         pending: totalGuests - checkedIn,
       },
-      mealTallies, // Empty array for non-caterer vendors
+      foodTallies,   // Caterer only — food/meal orders
+      drinkTallies,  // Drink vendor only — drink orders
+      expiry,        // { isExpired, isInFeedbackWindow, expiresAt }
     })
   } catch (err) {
     console.error("GET /api/vendor/[portalToken] error:", err)
@@ -153,4 +217,12 @@ export async function GET(
       { status: 500 }
     )
   }
+}
+
+// ── Internal type ─────────────────────────────
+interface TallyItem {
+  menuItemId:  string
+  name:        string
+  category:    string
+  totalOrders: number
 }
