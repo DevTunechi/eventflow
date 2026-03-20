@@ -1,4 +1,9 @@
-// src/app/api/events/route.ts
+// ─────────────────────────────────────────────
+// FILE: src/app/api/events/route.ts
+//
+// FIX: Added `vendors: true` to _count select.
+// Previously vendor count was always 0 on cards.
+// ─────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth-server"
@@ -17,7 +22,12 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
       include: {
         guestTiers: { select: { id: true, name: true, color: true } },
-        _count:     { select: { guests: true } },
+        _count: {
+          select: {
+            guests:  true,
+            vendors: true, // ← was missing, caused vendor count to always show 0
+          },
+        },
       },
     })
 
@@ -41,7 +51,6 @@ export async function POST(req: NextRequest) {
     const {
       name, eventType, eventDate, startTime, endTime,
       venueName, venueAddress, venueCapacity,
-      // ── Map coordinates + directions link ──
       venueLat, venueLng, venueMapUrl,
       description, invitationCard,
       inviteModel, requireOtp, rsvpDeadline,
@@ -75,7 +84,6 @@ export async function POST(req: NextRequest) {
         venueName:            venueName            || null,
         venueAddress:         venueAddress         || null,
         venueCapacity:        venueCapacity        ? Number(venueCapacity)        : null,
-        // ── Map fields ─────────────────────────
         venueLat:             venueLat             ? Number(venueLat)             : null,
         venueLng:             venueLng             ? Number(venueLng)             : null,
         venueMapUrl:          venueMapUrl          || null,

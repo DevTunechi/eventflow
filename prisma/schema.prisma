@@ -572,6 +572,9 @@ model Vendor {
   role                   VendorRole
   notes                  String?    @db.Text
   staffCount             Int?
+  arriveTime             String?
+  arriveLocation         String?
+  instructions           String?    @db.Text
   portalToken            String     @unique @default(cuid())
   lastAccessed           DateTime?
   canOverrideCapacity    Boolean    @default(false)
