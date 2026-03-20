@@ -560,35 +560,24 @@ model Tribute {
 // ─────────────────────────────────────────────
 
 model Vendor {
-  id           String       @id @default(cuid())
-  eventId      String
-  name         String       // Company or service name
-  contactName  String?
-  email        String?
-  phone        String?
-  role         VendorRole
-  notes        String?      @db.Text
+  id                     String     @id @default(cuid())
+  eventId                String
+  name                   String
+  contactName            String?
+  email                  String?
+  phone                  String?
+  role                   VendorRole
+  notes                  String?    @db.Text
+  staffCount             Int?
+  portalToken            String     @unique @default(cuid())
+  lastAccessed           DateTime?
+  canOverrideCapacity    Boolean    @default(false)
+  capacityOverrideActive Boolean    @default(false)
+  capacityOverrideAt     DateTime?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
 
-  // Unique token for vendor's private portal URL:
-  // eventflow.app/vendor/[portalToken]
-  portalToken  String       @unique @default(cuid())
-  lastAccessed DateTime?
-
-  // ── QR CAPACITY OVERRIDE ──────────────────
-  // When the event hits its guest cap and the
-  // RSVP link closes, a vendor (e.g. security)
-  // can enable walk-in mode from their portal
-  // to manually admit extra guests as walk-ins.
-  // Planner controls whether this is allowed.
-  canOverrideCapacity Boolean @default(false)
-  // True when vendor has activated walk-in mode
-  capacityOverrideActive Boolean @default(false)
-  capacityOverrideAt DateTime?
-
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-
-  event        Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event                  Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId])
   @@index([portalToken])
