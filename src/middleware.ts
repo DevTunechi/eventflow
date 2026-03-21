@@ -1,33 +1,57 @@
 // src/middleware.ts
-// Redirects Free plan users to /pricing after login
-// unless they're already on /pricing or a public route.
+// Handles plan gating and post-login redirects.
+//
+// Cookie values:
+//   "free-acknowledged" — planner chose Free on pricing page
+//   "starter"           — set by payment callback after Starter purchase
+//   "pro"               — set by payment callback after Pro purchase
+//
+// Any of these values = let through to dashboard.
+// No cookie at all = redirect to /pricing.
 
 import { NextRequest, NextResponse } from "next/server"
 
-const PUBLIC_PATHS = ["/login", "/invite", "/host", "/checkin", "/rsvp", "/vendor", "/api"]
+const PUBLIC_PATHS = [
+  "/login", "/invite", "/host", "/checkin",
+  "/rsvp", "/vendor", "/usher", "/api",
+  "/_next", "/favicon", "/eflogo",
+  "/1.", "/2.", "/3.", "/4.", "/5.", "/6.",
+  "/privacy", "/data-deletion",
+]
+
+const VALID_PLAN_VALUES = ["free-acknowledged", "free", "starter", "pro"]
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // Skip public routes and API
-  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) return NextResponse.next()
+  // Always allow public paths
+  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
+    return NextResponse.next()
+  }
 
-  // Skip pricing itself to avoid redirect loop
-  if (pathname === "/pricing") return NextResponse.next()
+  // Allow pricing page itself — prevents redirect loop
+  if (pathname.startsWith("/pricing") || pathname === "/pricing") {
+    return NextResponse.next()
+  }
 
-  // Read plan from cookie (set at login)
-  const plan = req.cookies.get("ef-plan")?.value
+  // Only gate dashboard routes
+  if (!pathname.startsWith("/dashboard")) {
+    return NextResponse.next()
+  }
 
-  // If no plan cookie or plan is "free", redirect to pricing
-if (!plan || (plan !== "pro" && plan !== "free-acknowledged")) {
+  const planCookie = req.cookies.get("ef-plan")?.value
+
+  // No plan cookie → redirect to pricing to choose a plan
+  if (!planCookie || !VALID_PLAN_VALUES.includes(planCookie)) {
     const url = req.nextUrl.clone()
     url.pathname = "/pricing"
     return NextResponse.redirect(url)
   }
 
+  // Valid plan cookie → allow through
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ["/(dashboard)/:path*"],
+  matcher: ["/(dashboard)/:path*", "/dashboard/:path*"],
 }
