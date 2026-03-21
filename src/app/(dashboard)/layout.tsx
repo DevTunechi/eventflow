@@ -1,11 +1,4 @@
 // src/app/(dashboard)/layout.tsx
-// Fixed:
-//   1. .ef-content gets overflow-x:hidden + min-width:0
-//      so children can't bleed past the content area width
-//   2. Pricing cookie is set client-side on load
-//      so subscribers aren't redirected to pricing on refresh
-//   3. Nav href paths fixed to include /dashboard prefix
-
 "use client"
 
 import { useState, useEffect, createContext, useContext } from "react"
@@ -15,7 +8,6 @@ import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/context/AuthContext"
 import Cookies from "js-cookie"
 
-// ── Theme Context ─────────────────────────────
 interface ThemeContextType {
   theme: "dark" | "light"
   toggleTheme: () => void
@@ -28,7 +20,6 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export const useTheme = () => useContext(ThemeContext)
 
-// ── Nav items ────────────────────────────────
 const NAV_ITEMS = [
   {
     href: "/dashboard",
@@ -43,7 +34,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: "/dashboard/events",
+    href: "/events",
     label: "Events",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -53,7 +44,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: "/dashboard/checkin",
+    href: "/checkin",
     label: "Check-in",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -63,7 +54,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: "/dashboard/pricing",
+    href: "/pricing",
     label: "Pricing",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -73,7 +64,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: "/dashboard/settings",
+    href: "/settings",
     label: "Settings",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -90,12 +81,7 @@ function getAuthHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-// ── Main Layout Component ─────────────────────
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth()
   const pathname = usePathname()
   const router   = useRouter()
@@ -116,25 +102,19 @@ export default function DashboardLayout({
     if (!user) router.push("/login")
   }, [user, router])
 
-  // ── KEY FIX: sync plan cookie from DB on every dashboard load ──
-  // This ensures subscribers don't get redirected to pricing
-  // after a refresh because the cookie was lost/expired.
+  // Sync plan cookie from DB on every dashboard load
+  // Ensures paid subscribers aren't bounced to pricing on refresh
   useEffect(() => {
     if (!user) return
     const existingCookie = Cookies.get("ef-plan")
-    // Only sync if cookie is missing or is "free-acknowledged"
-    // (don't overwrite a valid paid plan cookie unnecessarily)
     fetch("/api/payments/billing", { headers: getAuthHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d) return
         const plan = d.plan ?? "free"
         if (plan === "starter" || plan === "pro") {
-          // Always keep paid plan cookie fresh
           Cookies.set("ef-plan", plan, { expires: 365, path: "/" })
         } else if (!existingCookie) {
-          // No cookie and no paid plan — set free-acknowledged
-          // so middleware lets them stay on dashboard
           Cookies.set("ef-plan", "free-acknowledged", { expires: 365, path: "/" })
         }
       })
@@ -168,13 +148,11 @@ export default function DashboardLayout({
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,300;0,400&family=DM+Sans:wght@300;400;500&display=swap');
 
-          /* Scoped reset — only inside ef-dashboard */
           .ef-dashboard *, .ef-dashboard *::before, .ef-dashboard *::after {
             box-sizing: border-box;
           }
           html, body { height: 100%; margin: 0; padding: 0; }
 
-          /* ── CSS Variables — dark theme ── */
           .ef-dashboard {
             --bg:           #0a0a0a;
             --bg-2:         #111111;
@@ -196,7 +174,6 @@ export default function DashboardLayout({
             min-height: 100dvh;
           }
 
-          /* ── CSS Variables — light theme ── */
           .ef-dashboard.light {
             --bg:           #f7f5f1;
             --bg-2:         #ffffff;
@@ -216,7 +193,6 @@ export default function DashboardLayout({
             min-height: 100dvh;
           }
 
-          /* ══ SIDEBAR ══ */
           .ef-sidebar {
             width: var(--sidebar-w);
             flex-shrink: 0;
@@ -231,6 +207,7 @@ export default function DashboardLayout({
             overflow: hidden;
           }
           .ef-sidebar.collapsed { width: var(--sidebar-collapsed-w); }
+
           .ef-sidebar-logo {
             height: var(--topbar-h);
             display: flex; align-items: center;
@@ -240,6 +217,7 @@ export default function DashboardLayout({
             overflow: hidden; white-space: nowrap;
             text-decoration: none;
           }
+
           .ef-sidebar-wordmark {
             font-family: 'Bebas Neue', sans-serif;
             font-size: 1.05rem; letter-spacing: 0.12em;
@@ -253,6 +231,7 @@ export default function DashboardLayout({
             display: flex; flex-direction: column; gap: 2px;
             overflow-y: auto; overflow-x: hidden;
           }
+
           .ef-nav-item {
             display: flex; align-items: center; gap: 0.75rem;
             padding: 0.625rem 1rem; margin: 0 0.5rem;
@@ -267,14 +246,18 @@ export default function DashboardLayout({
           .ef-nav-item.active::before {
             content: ''; position: absolute;
             left: 0; top: 20%; bottom: 20%;
-            width: 2px; background: var(--gold); border-radius: 0 2px 2px 0;
+            width: 2px; background: var(--gold);
+            border-radius: 0 2px 2px 0;
           }
+
           .ef-nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
           .ef-sidebar.collapsed .ef-nav-label { opacity: 0; pointer-events: none; }
+
           .ef-sidebar-footer {
             padding: 0.75rem 0.5rem;
             border-top: 1px solid var(--border); flex-shrink: 0;
           }
+
           .ef-collapse-btn {
             width: 100%; display: flex; align-items: center; gap: 0.75rem;
             padding: 0.5rem 0.5rem; background: transparent; border: none;
@@ -285,24 +268,22 @@ export default function DashboardLayout({
           .ef-collapse-icon { width: 18px; height: 18px; flex-shrink: 0; transition: transform 0.25s ease; }
           .ef-sidebar.collapsed .ef-collapse-icon { transform: rotate(180deg); }
 
-          /* ══ MOBILE DRAWER ══ */
           .ef-drawer-overlay {
             display: none; position: fixed; inset: 0;
             background: rgba(0,0,0,0.6); z-index: 40;
             backdrop-filter: blur(2px);
           }
 
-          /* ══ MAIN AREA ══ */
           .ef-main {
             margin-left: var(--sidebar-w);
-            flex: 1; min-width: 0; /* CRITICAL — prevents flex child overflow */
+            flex: 1;
+            min-width: 0;
             display: flex; flex-direction: column;
             min-height: 100vh;
             transition: margin-left 0.25s ease;
           }
           .ef-main.collapsed { margin-left: var(--sidebar-collapsed-w); }
 
-          /* ── TOPBAR ── */
           .ef-topbar {
             height: var(--topbar-h);
             background: var(--bg-2);
@@ -325,6 +306,7 @@ export default function DashboardLayout({
             color: var(--text); letter-spacing: 0.01em;
           }
           .ef-topbar-right { display: flex; align-items: center; gap: 0.75rem; }
+
           .ef-theme-btn {
             width: 34px; height: 34px; border-radius: 50%;
             background: var(--bg-3); border: 1px solid var(--border);
@@ -334,6 +316,7 @@ export default function DashboardLayout({
           }
           .ef-theme-btn:hover { border-color: var(--border-hover); color: var(--gold); }
           .ef-theme-btn svg { width: 15px; height: 15px; }
+
           .ef-avatar-btn { position: relative; background: transparent; border: none; cursor: pointer; padding: 0; }
           .ef-avatar { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--border); object-fit: cover; display: block; transition: border-color 0.2s ease; }
           .ef-avatar-btn:hover .ef-avatar { border-color: var(--gold); }
@@ -344,6 +327,7 @@ export default function DashboardLayout({
             font-family: 'Bebas Neue', sans-serif; font-size: 0.9rem;
             color: var(--gold); letter-spacing: 0.05em;
           }
+
           .ef-user-menu {
             position: absolute; top: calc(100% + 0.5rem); right: 0;
             background: var(--bg-2); border: 1px solid var(--border);
@@ -352,9 +336,11 @@ export default function DashboardLayout({
             animation: fadeDown 0.15s ease;
           }
           @keyframes fadeDown { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
           .ef-user-info { padding: 0.625rem 0.75rem 0.75rem; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; }
           .ef-user-name { font-size: 0.8rem; font-weight: 500; color: var(--text); margin-bottom: 0.2rem; }
           .ef-user-email { font-size: 0.7rem; color: var(--text-3); }
+
           .ef-menu-item {
             display: flex; align-items: center; gap: 0.625rem;
             padding: 0.5rem 0.75rem; border-radius: 5px;
@@ -367,17 +353,15 @@ export default function DashboardLayout({
           .ef-menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
           .ef-menu-divider { height: 1px; background: var(--border); margin: 0.375rem 0; }
 
-          /* ── PAGE CONTENT ── */
           .ef-content {
             flex: 1;
-            min-width: 0;           /* CRITICAL — child can't push past this */
-            overflow-x: hidden;     /* CRITICAL — catch any overflow from children */
-            width: 100%;            /* CRITICAL — explicit width */
+            min-width: 0;
+            overflow-x: hidden;
+            width: 100%;
             padding: 2rem;
             overflow-y: auto;
           }
 
-          /* ── RESPONSIVE ── */
           @media(max-width:1024px){ .ef-content { padding: 1.5rem; } }
 
           @media(max-width:768px) {
@@ -398,7 +382,6 @@ export default function DashboardLayout({
         <div className={`ef-dashboard ${theme}`}>
           <div className="ef-layout">
 
-            {/* ══ SIDEBAR ══ */}
             <aside className={`ef-sidebar ${collapsed ? "collapsed" : ""} ${drawerOpen ? "drawer-open" : ""}`}>
               <Link href="/dashboard" className="ef-sidebar-logo">
                 <Image src="/eflogo.png" alt="EventFlow" width={26} height={26} style={{ width:26, height:26, objectFit:"contain", flexShrink:0 }} />
@@ -428,10 +411,8 @@ export default function DashboardLayout({
               </div>
             </aside>
 
-            {/* Mobile overlay */}
             <div className={`ef-drawer-overlay ${drawerOpen ? "active" : ""}`} onClick={() => setDrawerOpen(false)} />
 
-            {/* ══ MAIN AREA ══ */}
             <div className={`ef-main ${collapsed ? "collapsed" : ""}`}>
               <header className="ef-topbar">
                 <div className="ef-topbar-left">
@@ -474,7 +455,7 @@ export default function DashboardLayout({
                             <div className="ef-user-name">{user?.displayName ?? "Planner"}</div>
                             <div className="ef-user-email">{user?.email}</div>
                           </div>
-                          <Link href="/dashboard/settings" className="ef-menu-item" onClick={() => setUserMenuOpen(false)}>
+                          <Link href="/settings" className="ef-menu-item" onClick={() => setUserMenuOpen(false)}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <circle cx="12" cy="12" r="3" />
                               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
