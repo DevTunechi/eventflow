@@ -77,13 +77,17 @@ model VerificationToken {
 // ─────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?   // Google profile photo URL
-  phone         String?
-  plan          String    @default("free")
+  id                   String         @id @default(cuid())
+  name                 String?
+  email                String?        @unique
+  emailVerified        DateTime?
+  image                String?        // Google profile photo URL
+  phone                String?
+  plan                 String         @default("free")
+  planExpiresAt        DateTime?
+  paystackCustomerCode String?
+  subscriptions        Subscription[]
+  topUps               EventTopUp[]
 
   // Business branding — shown on RSVP pages
   // and event microsites
@@ -115,14 +119,15 @@ model User {
 // ─────────────────────────────────────────────
 
 model Event {
-  id            String      @id @default(cuid())
-  plannerId     String
-  venueLat      Float?
-  venueLng      Float?
-  venueMapUrl   String?
-  vendorStaff    VendorStaff[]
-  vendorFeedback VendorFeedback[]
-  timeline       EventTimeline[]
+  id              String            @id @default(cuid())
+  plannerId       String
+  venueLat        Float?
+  venueLng        Float?
+  venueMapUrl     String?
+  vendorStaff     VendorStaff[]
+  vendorFeedback  VendorFeedback[]
+  timeline        EventTimeline[]
+  topUps          EventTopUp[]
 
   // Core details
   name          String
@@ -743,4 +748,77 @@ model EventTimeline {
   event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId])
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String
+  plan                 String
+  status               SubscriptionStatus @default(ACTIVE)
+  paystackSubCode      String?
+  paystackCustomerCode String?
+  paystackEmailToken   String?
+  amount               Int
+  nextBillingDate      DateTime?
+  cancelledAt          DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([paystackSubCode])
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PAST_DUE
+}
+
+model EventTopUp {
+  id          String      @id @default(cuid())
+  userId      String
+  eventId     String
+  type        TopUpType
+  status      TopUpStatus @default(PENDING)
+  guestBonus  Int?        @default(200)
+  paystackRef String?     @unique
+  amount      Int
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([paystackRef])
+}
+
+enum TopUpType {
+  GUESTS
+  WHATSAPP
+  CHECKIN
+}
+
+enum TopUpStatus {
+  PENDING
+  ACTIVE
+  FAILED
+}
+
+model PaymentLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  event     String
+  reference String?
+  amount    Int?
+  status    String
+  raw       Json
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([reference])
 }
