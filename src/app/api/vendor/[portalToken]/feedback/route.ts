@@ -1,19 +1,11 @@
-// ─────────────────────────────────────────────
-// FILE: src/app/api/vendor/[portalToken]/feedback/route.ts
-//
-// PUBLIC API — token is the auth mechanism.
-//
-// POST /api/vendor/[portalToken]/feedback
-//   Body: { rating: number (1-5), message?: string }
-//   Submits or updates vendor's post-event feedback.
-//   Only allowed during the 24hr feedback window.
-//   Uses upsert — vendor can update their feedback
-//   within the window.
-// ─────────────────────────────────────────────
+// src/app/api/vendor/[portalToken]/feedback/route.ts
+// POST — vendor submits feedback to planner
+//        (planner feedback submitted via dashboard API)
+// Already exists for star rating — this extends it
+// to include the planner→vendor direction too.
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { isInFeedbackWindow, isPortalExpired } from "@/lib/event-expiry"
 
 export async function POST(
   req: NextRequest,
@@ -22,68 +14,63 @@ export async function POST(
   try {
     const { portalToken } = await params
 
-    // 1. Look up vendor and event date
     const vendor = await prisma.vendor.findUnique({
       where:  { portalToken },
-      select: {
-        id:      true,
-        eventId: true,
-        name:    true,
-        event:   { select: { eventDate: true, name: true } },
+      select: { id: true, event: { select: { id: true } } },
+    })
+
+    if (!vendor) return NextResponse.json({ error: "Invalid token" }, { status: 404 })
+
+    const { rating, message, wouldWork } = await req.json()
+
+    if (!rating || rating < 1 || rating > 5) {
+      return NextResponse.json({ error: "Rating must be 1–5" }, { status: 400 })
+    }
+
+    const feedback = await prisma.vendorFeedback.upsert({
+      where:  { vendorId_eventId: { vendorId: vendor.id, eventId: vendor.event.id } },
+      update: {
+        vendorRating:    rating,
+        vendorComment:   message?.trim() || null,
+        vendorWouldWork: wouldWork ?? null,
+      },
+      create: {
+        vendorId:        vendor.id,
+        eventId:         vendor.event.id,
+        vendorRating:    rating,
+        vendorComment:   message?.trim() || null,
+        vendorWouldWork: wouldWork ?? null,
       },
     })
 
-    if (!vendor) {
-      return NextResponse.json({ error: "Vendor not found" }, { status: 404 })
-    }
+    return NextResponse.json({ feedback }, { status: 201 })
+  } catch (err) {
+    console.error("vendor feedback POST error:", err)
+    return NextResponse.json({ error: "Server error" }, { status: 500 })
+  }
+}
 
-    const eventDate = new Date(vendor.event.eventDate)
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ portalToken: string }> }
+) {
+  try {
+    const { portalToken } = await params
 
-    // 2. Only allow feedback during the 24hr post-event window
-    if (isPortalExpired(eventDate)) {
-      return NextResponse.json(
-        { error: "The feedback window has closed. This portal has expired." },
-        { status: 410 }
-      )
-    }
+    const vendor = await prisma.vendor.findUnique({
+      where:  { portalToken },
+      select: { id: true, event: { select: { id: true } } },
+    })
 
-    if (!isInFeedbackWindow(eventDate)) {
-      return NextResponse.json(
-        { error: "Feedback can only be submitted after the event has taken place." },
-        { status: 403 }
-      )
-    }
+    if (!vendor) return NextResponse.json({ error: "Invalid token" }, { status: 404 })
 
-    // 3. Validate input
-    const { rating, message } = await req.json()
-
-    if (typeof rating !== "number" || rating < 1 || rating > 5) {
-      return NextResponse.json(
-        { error: "Rating must be a number between 1 and 5." },
-        { status: 400 }
-      )
-    }
-
-    // 4. Upsert — create or update the vendor's feedback
-    //    vendorId is @unique so there's always max one per vendor
-    const feedback = await prisma.vendorFeedback.upsert({
-      where:  { vendorId: vendor.id },
-      create: {
-        vendorId: vendor.id,
-        eventId:  vendor.eventId,
-        rating,
-        message:  message?.trim() || null,
-      },
-      update: {
-        rating,
-        message:  message?.trim() || null,
-        updatedAt: new Date(),
-      },
+    const feedback = await prisma.vendorFeedback.findUnique({
+      where: { vendorId_eventId: { vendorId: vendor.id, eventId: vendor.event.id } },
     })
 
     return NextResponse.json({ feedback })
   } catch (err) {
-    console.error("POST vendor feedback error:", err)
-    return NextResponse.json({ error: "Failed to submit feedback" }, { status: 500 })
+    console.error("vendor feedback GET error:", err)
+    return NextResponse.json({ error: "Server error" }, { status: 500 })
   }
 }

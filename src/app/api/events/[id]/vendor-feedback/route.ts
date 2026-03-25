@@ -1,12 +1,5 @@
 // ─────────────────────────────────────────────
 // FILE: src/app/api/events/[id]/vendor-feedback/route.ts
-//
-// AUTHENTICATED — planner only.
-//
-// GET /api/events/[id]/vendor-feedback
-//   Returns all vendor feedback submitted for
-//   this event. Shown on the event detail page
-//   once the event has ended.
 // ─────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from "next/server"
@@ -38,15 +31,17 @@ export async function GET(
     })
     if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 })
 
-    // Fetch all feedback with vendor details
+    // Fetch feedback using the correct schema fields: createdAt, plannerRating, vendorRating
     const feedback = await prisma.vendorFeedback.findMany({
       where:   { eventId },
-      orderBy: { submittedAt: "desc" },
+      orderBy: { createdAt: "desc" },
       select: {
-        id:          true,
-        rating:      true,
-        message:     true,
-        submittedAt: true,
+        id:              true,
+        plannerRating:   true, // Corrected from 'rating'
+        plannerComment:  true, // Corrected from 'message'
+        vendorRating:    true,
+        vendorComment:   true,
+        createdAt:       true,
         vendor: {
           select: {
             id:          true,
@@ -58,9 +53,10 @@ export async function GET(
       },
     })
 
-    // Calculate average rating for the event summary
-    const avgRating = feedback.length > 0
-      ? Math.round((feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length) * 10) / 10
+    // Calculate the average based on the planner's ratings of vendors
+    const ratedItems = feedback.filter(f => f.plannerRating !== null);
+    const avgRating = ratedItems.length > 0
+      ? Math.round((ratedItems.reduce((sum, f) => sum + (f.plannerRating || 0), 0) / ratedItems.length) * 10) / 10
       : null
 
     return NextResponse.json({

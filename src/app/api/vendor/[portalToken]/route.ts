@@ -55,7 +55,7 @@ export async function GET(
           orderBy: { createdAt: "asc" },
         },
         feedback: {
-          select: { rating: true, message: true, submittedAt: true },
+          select: { vendorRating: true, vendorComment: true, createdAt: true },
         },
         event: {
           select: {
